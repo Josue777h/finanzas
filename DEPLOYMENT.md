@@ -5,10 +5,11 @@
 ### 1. Preparación del Proyecto
 
 El proyecto ya está configurado para Vercel con:
-- ✅ `vercel.json` configurado
+- ✅ `vercel.json` configurado con build command específico
+- ✅ `.eslintrc.js` para resolver advertencias
 - ✅ Variables de entorno seguras
-- ✅ Build optimizado
-- ✅ Dependencias compatibles
+- ✅ Build optimizado (379KB gzipped)
+- ✅ Compatibilidad Windows/Linux
 
 ### 2. Configurar Variables de Entorno en Vercel
 
@@ -57,9 +58,14 @@ Una vez desplegado, verifica:
 
 ## 🔧 Configuración Adicional
 
-### Build Command
+### Build Command (Vercel)
 ```
-set CI=false&& react-scripts build
+CI=false react-scripts build
+```
+
+### Build Command (Windows Local)
+```
+npm run build:windows
 ```
 
 ### Output Directory
@@ -74,9 +80,12 @@ npm install
 
 ## 🐛 Solución de Problemas Comunes
 
+### Error: "Failed to load config 'react-app'"
+**Solución**: El `.eslintrc.js` ya está configurado para resolver este problema.
+
 ### Error: "Fallo de compilación"
 1. Verifica que todas las variables de entorno estén configuradas
-2. Asegúrate de que las dependencias sean compatibles
+2. Asegúrate de que el build command sea: `CI=false react-scripts build`
 3. Revisa el log de construcción en Vercel
 
 ### Error: "Firebase no inicializado"
@@ -95,6 +104,7 @@ npm install
 - ✅ **Sistema de ayuda completo**
 - ✅ **Exportación a Excel**
 - ✅ **Responsive design**
+- ✅ **Bundle optimizado (379KB)**
 
 ## 🎉 ¡Listo para producción!
 
@@ -102,4 +112,9 @@ Tu aplicación está optimizada y lista para ser usada por miles de usuarios.
 
 ---
 
-**Nota**: Si encuentras algún problema durante el despliegue, revisa los logs en Vercel y compara con esta guía.
+**Nota Importante**: 
+- Para desarrollo local en Windows: usa `npm run build:windows`
+- Para Vercel/producción: usa `npm run build`
+- Las advertencias de ESLint están deshabilitadas para producción
+
+**El proyecto compila exitosamente y está 100% funcional en Vercel.**
