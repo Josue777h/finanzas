@@ -22,12 +22,12 @@ import {
 
 // Tu configuración de Firebase - Reemplaza con tus credenciales
 const firebaseConfig = {
-  apiKey: "AIzaSyA_MCovnY-NWCdfc23yLI8kr20HLrqqeEo",
-  authDomain: "listadetareas-cb9a7.firebaseapp.com",
-  projectId: "listadetareas-cb9a7",
-  storageBucket: "listadetareas-cb9a7.firebasestorage.app",
-  messagingSenderId: "246655635442",
-  appId: "1:246655635442:web:d6ae719d3727671370a56b"
+  apiKey: process.env.REACT_APP_FIREBASE_API_KEY || "AIzaSyA_MCovnY-NWCdfc23yLI8kr20HLrqqeEo",
+  authDomain: process.env.REACT_APP_FIREBASE_AUTH_DOMAIN || "listadetareas-cb9a7.firebaseapp.com",
+  projectId: process.env.REACT_APP_FIREBASE_PROJECT_ID || "listadetareas-cb9a7",
+  storageBucket: process.env.REACT_APP_FIREBASE_STORAGE_BUCKET || "listadetareas-cb9a7.firebasestorage.app",
+  messagingSenderId: process.env.REACT_APP_FIREBASE_MESSAGING_SENDER_ID || "246655635442",
+  appId: process.env.REACT_APP_FIREBASE_APP_ID || "1:246655635442:web:d6ae719d3727671370a56b"
 };
 // Inicializar Firebase
 const app = initializeApp(firebaseConfig);

@@ -161,7 +161,7 @@ export const FinanceProvider: React.FC<{ children: ReactNode }> = ({ children })
           const maxRetries = 3;
           let accountsResult: any, transactionsResult: any, categoriesResult: any;
           
-          const attemptLoad = async () => {
+          const attemptLoad = async (currentRetryCount: number) => {
             try {
               [accountsResult, transactionsResult, categoriesResult] = await Promise.all([
                 loadAccounts(user.id),
@@ -175,7 +175,7 @@ export const FinanceProvider: React.FC<{ children: ReactNode }> = ({ children })
           };
           
           while (retryCount < maxRetries) {
-            const success = await attemptLoad();
+            const success = await attemptLoad(retryCount);
             if (success) {
               break;
             }
