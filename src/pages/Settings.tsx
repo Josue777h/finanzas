@@ -1,0 +1,654 @@
+import React, { useState, useEffect } from 'react';
+import { useAuth } from '../context/AuthContext';
+import { useFinance } from '../context/FinanceContext';
+import { useTheme } from '../context/ThemeContext';
+import { Bell, Shield, Database, HelpCircle, Download, Trash2, Mail, AlertTriangle, FileText, Send } from 'lucide-react';
+import { exportTransactionsToExcel, exportAccountsToExcel, exportFullReportToExcel } from '../utils/exportToExcel';
+import { clearCache } from '../firebase/config';
+import { sendMonthlyReport, generateAndDownloadMonthlyReport } from '../utils/monthlyReportService';
+import { checkAndSendAlerts } from '../utils/emailService';
+
+const Settings: React.FC = () => {
+  const { user, logout } = useAuth();
+  const { transactions, accounts, categories } = useFinance();
+  const { isDarkMode } = useTheme();
+  
+  const [notifications, setNotifications] = useState({
+    emailAlerts: true,
+    monthlyReport: true
+  });
+  
+  const [privacy, setPrivacy] = useState({
+    dataSharing: false,
+    analytics: true
+  });
+  
+  const [storage, setStorage] = useState({
+    cloudBackup: true,
+    autoSync: true,
+    offlineMode: false,
+    compressionEnabled: true
+  });
+  
+  const [isSendingReport, setIsSendingReport] = useState(false);
+  const [lastReportStatus, setLastReportStatus] = useState<'idle' | 'sending' | 'success' | 'error'>('idle');
+
+  // Cargar configuraciones guardadas
+  useEffect(() => {
+    const savedNotifications = localStorage.getItem(`notifications_${user?.id}`);
+    const savedPrivacy = localStorage.getItem(`privacy_${user?.id}`);
+    const savedStorage = localStorage.getItem(`storage_${user?.id}`);
+    
+    if (savedNotifications) setNotifications(JSON.parse(savedNotifications));
+    if (savedPrivacy) setPrivacy(JSON.parse(savedPrivacy));
+    if (savedStorage) setStorage(JSON.parse(savedStorage));
+  }, [user?.id]);
+
+  // Guardar configuraciones
+  useEffect(() => {
+    if (user?.id) {
+      localStorage.setItem(`notifications_${user.id}`, JSON.stringify(notifications));
+      localStorage.setItem(`privacy_${user.id}`, JSON.stringify(privacy));
+      localStorage.setItem(`storage_${user.id}`, JSON.stringify(storage));
+    }
+  }, [notifications, privacy, storage, user?.id]);
+
+  const handleExportTransactions = () => {
+    exportTransactionsToExcel(transactions, accounts);
+  };
+
+  const handleExportAccounts = () => {
+    exportAccountsToExcel(accounts, transactions);
+  };
+
+  const handleExportFull = () => {
+    exportFullReportToExcel(transactions, accounts, categories);
+  };
+
+  const handleSendMonthlyReport = async () => {
+    if (!user?.email) {
+      alert('No se puede enviar el reporte. Email no disponible.');
+      return;
+    }
+    
+    setIsSendingReport(true);
+    setLastReportStatus('sending');
+    
+    try {
+      const success = await sendMonthlyReport(transactions, accounts, categories, user.email);
+      if (success) {
+        setLastReportStatus('success');
+        setTimeout(() => setLastReportStatus('idle'), 3000);
+      } else {
+        setLastReportStatus('error');
+        setTimeout(() => setLastReportStatus('idle'), 3000);
+      }
+    } catch (error) {
+      setLastReportStatus('error');
+      setTimeout(() => setLastReportStatus('idle'), 3000);
+    } finally {
+      setIsSendingReport(false);
+    }
+  };
+
+  const handleDownloadMonthlyReport = () => {
+    generateAndDownloadMonthlyReport(transactions, accounts, categories);
+  };
+
+  const handleTestEmailAlerts = async () => {
+    if (!user?.email) {
+      alert('No se puede enviar alertas. Email no disponible.');
+      return;
+    }
+    
+    try {
+      await checkAndSendAlerts(transactions, accounts, user.email, notifications);
+      alert('✅ Sistema de alertas verificado. Revisa tu email para ver las alertas generadas.');
+    } catch (error) {
+      alert('❌ Error al verificar sistema de alertas.');
+    }
+  };
+
+  const handleClearCache = () => {
+    if (window.confirm('¿Estás seguro de que quieres limpiar la caché local? Esto eliminará los datos temporales.')) {
+      if (user?.id) {
+        clearCache(user.id);
+      }
+      alert('Caché limpiada exitosamente. Los datos se recargarán desde la nube.');
+    }
+  };
+
+  const handleDeleteAccount = async () => {
+    const confirmStep1 = window.confirm('⚠️ ADVERTENCIA: Esta acción eliminará permanentemente tu cuenta y todos tus datos.');
+    if (!confirmStep1) return;
+    
+    const confirmStep2 = window.confirm('¿Estás ABSOLUTAMENTE seguro? Esta acción no se puede deshacer.');
+    if (!confirmStep2) return;
+    
+    const emailConfirm = prompt('Para confirmar, escribe tu email:');
+    if (emailConfirm !== user?.email) {
+      alert('El email no coincide. Operación cancelada.');
+      return;
+    }
+    
+    try {
+      // Eliminar datos del usuario de localStorage
+      if (user?.id) {
+        localStorage.removeItem(`accounts_${user.id}`);
+        localStorage.removeItem(`transactions_${user.id}`);
+        localStorage.removeItem(`categories_${user.id}`);
+        localStorage.removeItem(`notifications_${user.id}`);
+        localStorage.removeItem(`privacy_${user.id}`);
+        localStorage.removeItem(`storage_${user.id}`);
+      }
+      
+      // Cerrar sesión
+      await logout();
+      
+      alert('Tu cuenta y todos tus datos han sido eliminados permanentemente.');
+      window.location.reload();
+    } catch (error) {
+      console.error('Error eliminando cuenta:', error);
+      alert('Hubo un error al eliminar tu cuenta. Por favor intenta nuevamente.');
+    }
+  };
+
+  const handleDownloadData = () => {
+    handleExportFull();
+  };
+
+  const handlePrivacyRequest = (type: 'export' | 'delete') => {
+    if (type === 'export') {
+      handleDownloadData();
+    } else {
+      handleDeleteAccount();
+    }
+  };
+
+  const toggleNotification = (key: keyof typeof notifications) => {
+    setNotifications(prev => ({ ...prev, [key]: !prev[key] }));
+  };
+
+  const togglePrivacy = (key: keyof typeof privacy) => {
+    setPrivacy(prev => ({ ...prev, [key]: !prev[key] }));
+  };
+
+  const toggleStorage = (key: keyof typeof storage) => {
+    setStorage(prev => ({ ...prev, [key]: !prev[key] }));
+  };
+
+  return (
+    <div className="space-y-6">
+      <div>
+        <h1 className={`text-3xl font-bold transition-colors ${
+          isDarkMode ? 'text-white' : 'text-gray-800'
+        }`}>
+          Ajustes
+        </h1>
+        <p className={`mt-1 transition-colors ${
+          isDarkMode ? 'text-gray-400' : 'text-gray-600'
+        }`}>
+          Configura tu aplicación y privacidad
+        </p>
+      </div>
+
+      {/* Notificaciones */}
+      <div className={`rounded-2xl shadow-lg border transition-all duration-300 ${
+        isDarkMode
+          ? 'bg-gradient-to-br from-gray-800 to-gray-700 border-gray-700'
+          : 'bg-white border-gray-200'
+      }`}>
+        <div className={`p-6 border-b transition-colors ${
+          isDarkMode ? 'border-gray-700' : 'border-gray-200'
+        }`}>
+          <h2 className={`text-lg font-bold flex items-center transition-colors ${
+            isDarkMode ? 'text-white' : 'text-gray-800'
+          }`}>
+            <Bell className="mr-2" size={20} />
+            Notificaciones
+          </h2>
+        </div>
+        <div className="p-6 space-y-4">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center">
+              <Mail className="mr-3" size={18} />
+              <div>
+                <p className={`font-semibold transition-colors ${
+                  isDarkMode ? 'text-white' : 'text-gray-800'
+                }`}>
+                  Alertas por email
+                </p>
+                <p className={`text-sm transition-colors ${
+                  isDarkMode ? 'text-gray-400' : 'text-gray-500'
+                }`}>
+                  Recibe notificaciones importantes por email
+                </p>
+              </div>
+            </div>
+            <button 
+              onClick={() => toggleNotification('emailAlerts')}
+              className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
+                notifications.emailAlerts 
+                  ? 'bg-blue-600' 
+                  : isDarkMode ? 'bg-gray-700' : 'bg-gray-200'
+              }`}
+            >
+              <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition ${
+                notifications.emailAlerts ? 'translate-x-6' : 'translate-x-1'
+              }`}></span>
+            </button>
+          </div>
+          
+          <div className="flex items-center justify-between">
+            <div>
+              <p className={`font-semibold transition-colors ${
+                isDarkMode ? 'text-white' : 'text-gray-800'
+              }`}>
+                Reporte mensual
+              </p>
+              <p className={`text-sm transition-colors ${
+                isDarkMode ? 'text-gray-400' : 'text-gray-500'
+              }`}>
+                Resumen financiero mensual automático
+              </p>
+            </div>
+            <button 
+              onClick={() => toggleNotification('monthlyReport')}
+              className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
+                notifications.monthlyReport 
+                  ? 'bg-blue-600' 
+                  : isDarkMode ? 'bg-gray-700' : 'bg-gray-200'
+              }`}
+            >
+              <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition ${
+                notifications.monthlyReport ? 'translate-x-6' : 'translate-x-1'
+              }`}></span>
+            </button>
+          </div>
+
+          {/* Acciones de email */}
+          <div className="pt-4 border-t border-gray-200 dark:border-gray-700">
+            <p className={`text-sm font-semibold mb-3 transition-colors ${
+              isDarkMode ? 'text-gray-300' : 'text-gray-700'
+            }`}>
+              Acciones de Email
+            </p>
+            <div className="space-y-3">
+              <button
+                onClick={handleSendMonthlyReport}
+                disabled={isSendingReport}
+                className={`w-full px-4 py-3 rounded-xl font-medium transition-all duration-200 flex items-center justify-center space-x-2 ${
+                  isSendingReport
+                    ? 'bg-gray-400 cursor-not-allowed'
+                    : 'bg-blue-600 hover:bg-blue-700 text-white'
+                }`}
+              >
+                <Send size={16} />
+                <span>{isSendingReport ? 'Enviando...' : 'Enviar Reporte Mensual'}</span>
+              </button>
+              
+              <button
+                onClick={handleDownloadMonthlyReport}
+                className={`w-full px-4 py-3 rounded-xl font-medium transition-all duration-200 flex items-center justify-center space-x-2 ${
+                  isDarkMode
+                    ? 'bg-gray-700 hover:bg-gray-600 text-white'
+                    : 'bg-gray-200 hover:bg-gray-300 text-gray-800'
+                }`}
+              >
+                <FileText size={16} />
+                <span>Descargar Reporte Mensual</span>
+              </button>
+              
+              <button
+                onClick={handleTestEmailAlerts}
+                className={`w-full px-4 py-3 rounded-xl font-medium transition-all duration-200 flex items-center justify-center space-x-2 ${
+                  isDarkMode
+                    ? 'bg-purple-600 hover:bg-purple-700 text-white'
+                    : 'bg-purple-600 hover:bg-purple-700 text-white'
+                }`}
+              >
+                <AlertTriangle size={16} />
+                <span>Probar Alertas por Email</span>
+              </button>
+            </div>
+            
+            {/* Estado del envío */}
+            {lastReportStatus !== 'idle' && (
+              <div className={`mt-3 p-3 rounded-lg text-sm ${
+                lastReportStatus === 'success' 
+                  ? 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200'
+                  : lastReportStatus === 'error'
+                  ? 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200'
+                  : 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200'
+              }`}>
+                {lastReportStatus === 'success' && '✅ Reporte enviado exitosamente'}
+                {lastReportStatus === 'error' && '❌ Error al enviar el reporte'}
+                {lastReportStatus === 'sending' && '📧 Enviando reporte...'}
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* Privacidad y Seguridad */}
+      <div className={`rounded-2xl shadow-lg border transition-all duration-300 ${
+        isDarkMode
+          ? 'bg-gradient-to-br from-gray-800 to-gray-700 border-gray-700'
+          : 'bg-white border-gray-200'
+      }`}>
+        <div className={`p-6 border-b transition-colors ${
+          isDarkMode ? 'border-gray-700' : 'border-gray-200'
+        }`}>
+          <h2 className={`text-lg font-bold flex items-center transition-colors ${
+            isDarkMode ? 'text-white' : 'text-gray-800'
+          }`}>
+            <Shield className="mr-2" size={20} />
+            Privacidad y Seguridad
+          </h2>
+        </div>
+        <div className="p-6 space-y-4">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className={`font-semibold transition-colors ${
+                isDarkMode ? 'text-white' : 'text-gray-800'
+              }`}>
+                Compartir datos anónimos
+              </p>
+              <p className={`text-sm transition-colors ${
+                isDarkMode ? 'text-gray-400' : 'text-gray-500'
+              }`}>
+                Ayuda a mejorar el servicio con estadísticas anónimas
+              </p>
+            </div>
+            <button 
+              onClick={() => togglePrivacy('dataSharing')}
+              className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
+                privacy.dataSharing 
+                  ? 'bg-blue-600' 
+                  : isDarkMode ? 'bg-gray-700' : 'bg-gray-200'
+              }`}
+            >
+              <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition ${
+                privacy.dataSharing ? 'translate-x-6' : 'translate-x-1'
+              }`}></span>
+            </button>
+          </div>
+
+          <div className="flex items-center justify-between">
+            <div>
+              <p className={`font-semibold transition-colors ${
+                isDarkMode ? 'text-white' : 'text-gray-800'
+              }`}>
+                Analíticas de uso
+              </p>
+              <p className={`text-sm transition-colors ${
+                isDarkMode ? 'text-gray-400' : 'text-gray-500'
+              }`}>
+                Permite mejorar la experiencia del usuario
+              </p>
+            </div>
+            <button 
+              onClick={() => togglePrivacy('analytics')}
+              className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
+                privacy.analytics 
+                  ? 'bg-blue-600' 
+                  : isDarkMode ? 'bg-gray-700' : 'bg-gray-200'
+              }`}
+            >
+              <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition ${
+                privacy.analytics ? 'translate-x-6' : 'translate-x-1'
+              }`}></span>
+            </button>
+          </div>
+        </div>
+
+        <div className="pt-4 border-t border-gray-200 dark:border-gray-700">
+          <h3 className={`font-semibold mb-3 transition-colors ${
+            isDarkMode ? 'text-white' : 'text-gray-800'
+          }`}>
+            Derechos de Privacidad
+          </h3>
+          <div className="space-y-2">
+            <button
+              onClick={() => handlePrivacyRequest('export')}
+              className={`w-full text-left p-3 rounded-lg transition-colors ${
+                isDarkMode 
+                  ? 'bg-gray-700 hover:bg-gray-600 text-white' 
+                  : 'bg-gray-50 hover:bg-gray-100 text-gray-800'
+              }`}
+            >
+              <div className="flex items-center">
+                <Download className="mr-2" size={16} />
+                <span>Descargar todos mis datos</span>
+              </div>
+            </button>
+            
+            <button
+              onClick={() => handlePrivacyRequest('delete')}
+              className={`w-full text-left p-3 rounded-lg transition-colors ${
+                isDarkMode 
+                  ? 'bg-red-900 hover:bg-red-800 text-red-200' 
+                  : 'bg-red-50 hover:bg-red-100 text-red-800'
+              }`}
+            >
+              <div className="flex items-center">
+                <Trash2 className="mr-2" size={16} />
+                <span>Solicitar eliminación de datos</span>
+              </div>
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {/* Almacenamiento */}
+      <div className={`rounded-2xl shadow-lg border transition-all duration-300 ${
+        isDarkMode
+          ? 'bg-gradient-to-br from-gray-800 to-gray-700 border-gray-700'
+          : 'bg-white border-gray-200'
+      }`}>
+        <div className={`p-6 border-b transition-colors ${
+          isDarkMode ? 'border-gray-700' : 'border-gray-200'
+        }`}>
+          <h2 className={`text-lg font-bold flex items-center transition-colors ${
+            isDarkMode ? 'text-white' : 'text-gray-800'
+          }`}>
+            <Database className="mr-2" size={20} />
+            Almacenamiento y Datos
+          </h2>
+        </div>
+        <div className="p-6 space-y-4">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className={`font-semibold transition-colors ${
+                isDarkMode ? 'text-white' : 'text-gray-800'
+              }`}>
+                Respaldo en la nube
+              </p>
+              <p className={`text-sm transition-colors ${
+                isDarkMode ? 'text-gray-400' : 'text-gray-500'
+              }`}>
+                Sincronización automática segura
+              </p>
+            </div>
+            <button 
+              onClick={() => toggleStorage('cloudBackup')}
+              className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
+                storage.cloudBackup 
+                  ? 'bg-green-600' 
+                  : isDarkMode ? 'bg-gray-700' : 'bg-gray-200'
+              }`}
+            >
+              <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition ${
+                storage.cloudBackup ? 'translate-x-6' : 'translate-x-1'
+              }`}></span>
+            </button>
+          </div>
+          
+          <div className="flex items-center justify-between">
+            <div>
+              <p className={`font-semibold transition-colors ${
+                isDarkMode ? 'text-white' : 'text-gray-800'
+              }`}>
+                Sincronización automática
+              </p>
+              <p className={`text-sm transition-colors ${
+                isDarkMode ? 'text-gray-400' : 'text-gray-500'
+              }`}>
+                Actualización en tiempo real
+              </p>
+            </div>
+            <button 
+              onClick={() => toggleStorage('autoSync')}
+              className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
+                storage.autoSync 
+                  ? 'bg-green-600' 
+                  : isDarkMode ? 'bg-gray-700' : 'bg-gray-200'
+              }`}
+            >
+              <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition ${
+                storage.autoSync ? 'translate-x-6' : 'translate-x-1'
+              }`}></span>
+            </button>
+          </div>
+
+          <div className="pt-4 border-t border-gray-200 dark:border-gray-700">
+            <h3 className={`font-semibold mb-3 transition-colors ${
+              isDarkMode ? 'text-white' : 'text-gray-800'
+            }`}>
+              Exportar Datos
+            </h3>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+              <button
+                onClick={handleExportTransactions}
+                className={`p-3 rounded-lg transition-colors ${
+                  isDarkMode 
+                    ? 'bg-blue-600 hover:bg-blue-700 text-white' 
+                    : 'bg-blue-500 hover:bg-blue-600 text-white'
+                }`}
+              >
+                <Download className="inline mr-2" size={16} />
+                Transacciones
+              </button>
+              
+              <button
+                onClick={handleExportAccounts}
+                className={`p-3 rounded-lg transition-colors ${
+                  isDarkMode 
+                    ? 'bg-green-600 hover:bg-green-700 text-white' 
+                    : 'bg-green-500 hover:bg-green-600 text-white'
+                }`}
+              >
+                <Download className="inline mr-2" size={16} />
+                Cuentas
+              </button>
+              
+              <button
+                onClick={handleExportFull}
+                className={`p-3 rounded-lg transition-colors ${
+                  isDarkMode 
+                    ? 'bg-purple-600 hover:bg-purple-700 text-white' 
+                    : 'bg-purple-500 hover:bg-purple-600 text-white'
+                }`}
+              >
+                <Download className="inline mr-2" size={16} />
+                Reporte Completo
+              </button>
+            </div>
+          </div>
+
+          <div className="pt-4 border-t border-gray-200 dark:border-gray-700">
+            <h3 className={`font-semibold mb-3 transition-colors ${
+              isDarkMode ? 'text-white' : 'text-gray-800'
+            }`}>
+              Gestión de Almacenamiento
+            </h3>
+            <div className="space-y-2">
+              <button
+                onClick={handleClearCache}
+                className={`w-full text-left p-3 rounded-lg transition-colors ${
+                  isDarkMode 
+                    ? 'bg-yellow-900 hover:bg-yellow-800 text-yellow-200' 
+                    : 'bg-yellow-50 hover:bg-yellow-100 text-yellow-800'
+                }`}
+              >
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center">
+                    <Database className="mr-2" size={16} />
+                    <span>Limpiar caché local</span>
+                  </div>
+                  <span className="text-xs opacity-75">Liberar espacio</span>
+                </div>
+              </button>
+              
+              <button
+                onClick={handleDeleteAccount}
+                className={`w-full text-left p-3 rounded-lg transition-colors ${
+                  isDarkMode 
+                    ? 'bg-red-900 hover:bg-red-800 text-red-200' 
+                    : 'bg-red-50 hover:bg-red-100 text-red-800'
+                }`}
+              >
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center">
+                    <AlertTriangle className="mr-2" size={16} />
+                    <span>Eliminar cuenta permanentemente</span>
+                  </div>
+                  <span className="text-xs opacity-75">Irreversible</span>
+                </div>
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Ayuda */}
+      <div className={`rounded-2xl shadow-lg border transition-all duration-300 ${
+        isDarkMode
+          ? 'bg-gradient-to-br from-gray-800 to-gray-700 border-gray-700'
+          : 'bg-white border-gray-200'
+      }`}>
+        <div className={`p-6 border-b transition-colors ${
+          isDarkMode ? 'border-gray-700' : 'border-gray-200'
+        }`}>
+          <h2 className={`text-lg font-bold flex items-center transition-colors ${
+            isDarkMode ? 'text-white' : 'text-gray-800'
+          }`}>
+            <HelpCircle className="mr-2" size={20} />
+            Ayuda y Soporte
+          </h2>
+        </div>
+        <div className="p-6">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <button className={`text-left p-4 rounded-lg transition-colors ${
+              isDarkMode 
+                ? 'bg-gray-700 hover:bg-gray-600 text-white' 
+                : 'bg-gray-50 hover:bg-gray-100 text-gray-800'
+            }`}>
+              <h4 className="font-semibold">Centro de Ayuda</h4>
+              <p className={`text-sm mt-1 ${
+                isDarkMode ? 'text-gray-400' : 'text-gray-600'
+              }`}>
+                Preguntas frecuentes y tutoriales
+              </p>
+            </button>
+            
+            <button className={`text-left p-4 rounded-lg transition-colors ${
+              isDarkMode 
+                ? 'bg-gray-700 hover:bg-gray-600 text-white' 
+                : 'bg-gray-50 hover:bg-gray-100 text-gray-800'
+            }`}>
+              <h4 className="font-semibold">Contactar Soporte</h4>
+              <p className={`text-sm mt-1 ${
+                isDarkMode ? 'text-gray-400' : 'text-gray-600'
+              }`}>
+                Habla con nuestro equipo
+              </p>
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+export default Settings;
