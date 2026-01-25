@@ -5,11 +5,11 @@
 ### 1. Preparación del Proyecto
 
 El proyecto ya está configurado para Vercel con:
-- ✅ `vercel.json` configurado con build command específico
-- ✅ `.eslintrc.js` para resolver advertencias
+- ✅ `vercel.json` simplificado sin "builds" obsoleto
+- ✅ Build command optimizado para Vercel
 - ✅ Variables de entorno seguras
 - ✅ Build optimizado (379KB gzipped)
-- ✅ Compatibilidad Windows/Linux
+- ✅ Sin configuración ESLint problemática
 
 ### 2. Configurar Variables de Entorno en Vercel
 
@@ -60,12 +60,12 @@ Una vez desplegado, verifica:
 
 ### Build Command (Vercel)
 ```
-CI=false react-scripts build
+CI=false npm run build
 ```
 
-### Build Command (Windows Local)
+### Build Command (Local)
 ```
-npm run build:windows
+npm run build
 ```
 
 ### Output Directory
@@ -80,12 +80,15 @@ npm install
 
 ## 🐛 Solución de Problemas Comunes
 
+### Advertencia: "Debido a la existencia de compilaciones..."
+**Solución**: ✅ Ya resuelto - Eliminamos la sección "builds" de vercel.json
+
 ### Error: "Failed to load config 'react-app'"
-**Solución**: El `.eslintrc.js` ya está configurado para resolver este problema.
+**Solución**: ✅ Ya resuelto - Eliminamos la configuración ESLint problemática
 
 ### Error: "Fallo de compilación"
 1. Verifica que todas las variables de entorno estén configuradas
-2. Asegúrate de que el build command sea: `CI=false react-scripts build`
+2. Asegúrate de que el build command sea: `CI=false npm run build`
 3. Revisa el log de construcción en Vercel
 
 ### Error: "Firebase no inicializado"
@@ -113,8 +116,9 @@ Tu aplicación está optimizada y lista para ser usada por miles de usuarios.
 ---
 
 **Nota Importante**: 
-- Para desarrollo local en Windows: usa `npm run build:windows`
-- Para Vercel/producción: usa `npm run build`
-- Las advertencias de ESLint están deshabilitadas para producción
+- El proyecto ahora usa la configuración moderna de Vercel sin "builds"
+- Build local: `npm run build`
+- Build Vercel: `CI=false npm run build` (automático)
+- Sin advertencias de configuración obsoleta
 
 **El proyecto compila exitosamente y está 100% funcional en Vercel.**
