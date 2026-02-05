@@ -1,8 +1,10 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { FinanceProvider } from './context/FinanceContext';
 import { ThemeProvider } from './context/ThemeContext';
 import { ToastProvider, useToast } from './context/ToastContext';
+import { SimpleModeProvider } from './context/SimpleModeContext';
+import { CurrencyProvider } from './context/CurrencyContext';
 import { ToastContainer } from './components/Toast';
 import Login from './pages/Login';
 import Layout from './components/Layout';
@@ -12,11 +14,23 @@ import Transactions from './pages/Transactions';
 import AdvancedStats from './pages/AdvancedStats';
 import Profile from './pages/Profile';
 import Settings from './pages/Settings';
+import Help from './pages/Help';
 
 const AppContent: React.FC = () => {
   const { isAuthenticated, isLoading } = useAuth();
   const { toasts, removeToast } = useToast();
   const [currentPage, setCurrentPage] = useState('home');
+
+  useEffect(() => {
+    const handler = (event: Event) => {
+      const customEvent = event as CustomEvent<string>;
+      if (customEvent.detail) {
+        setCurrentPage(customEvent.detail);
+      }
+    };
+    window.addEventListener('app:navigate', handler);
+    return () => window.removeEventListener('app:navigate', handler);
+  }, []);
 
   if (isLoading) {
     return (
@@ -55,6 +69,8 @@ const AppContent: React.FC = () => {
         return <Profile />;
       case 'settings':
         return <Settings />;
+      case 'help':
+        return <Help />;
       default:
         return <Dashboard />;
     }
@@ -74,9 +90,13 @@ const App: React.FC = () => {
   return (
     <ThemeProvider>
       <ToastProvider>
-        <AuthProvider>
-          <AppContent />
-        </AuthProvider>
+        <SimpleModeProvider>
+          <CurrencyProvider>
+            <AuthProvider>
+              <AppContent />
+            </AuthProvider>
+          </CurrencyProvider>
+        </SimpleModeProvider>
       </ToastProvider>
     </ThemeProvider>
   );

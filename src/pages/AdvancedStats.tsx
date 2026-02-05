@@ -1,5 +1,7 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import { useFinance } from '../context/FinanceContext';
+import { useCurrency } from '../context/CurrencyContext';
+import { formatCurrency } from '../utils/formatCurrency';
 import { useTheme } from '../context/ThemeContext';
 import { TrendingUp, TrendingDown, DollarSign, Calendar, Target, Award } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, AreaChart, Area } from 'recharts';
@@ -7,66 +9,76 @@ import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContaine
 const AdvancedStats: React.FC = () => {
   const { accounts, transactions, categories } = useFinance();
   const { isDarkMode } = useTheme();
+  const { currency } = useCurrency();
 
   // Calculate monthly data for the last 6 months
-  const monthlyData = Array.from({ length: 6 }, (_, i) => {
-    const date = new Date();
-    date.setMonth(date.getMonth() - (5 - i));
-    const monthStart = new Date(date.getFullYear(), date.getMonth(), 1);
-    const monthEnd = new Date(date.getFullYear(), date.getMonth() + 1, 0);
-    
-    const monthTransactions = transactions.filter(trx => {
-      const trxDate = new Date(trx.date);
-      return trxDate >= monthStart && trxDate <= monthEnd;
-    });
+  const monthlyData = useMemo(() => {
+    return Array.from({ length: 6 }, (_, i) => {
+      const date = new Date();
+      date.setMonth(date.getMonth() - (5 - i));
+      const monthStart = new Date(date.getFullYear(), date.getMonth(), 1);
+      const monthEnd = new Date(date.getFullYear(), date.getMonth() + 1, 0);
+      
+      const monthTransactions = transactions.filter(trx => {
+        const trxDate = new Date(trx.date);
+        return trxDate >= monthStart && trxDate <= monthEnd;
+      });
 
-    return {
-      month: date.toLocaleDateString('es', { month: 'short' }),
-      income: monthTransactions.filter(t => t.type === 'income').reduce((sum, t) => sum + t.amount, 0),
-      expenses: monthTransactions.filter(t => t.type === 'expense').reduce((sum, t) => sum + t.amount, 0),
-      balance: 0,
-    };
-  }).map(item => ({
-    ...item,
-    balance: item.income - item.expenses,
-  }));
+      return {
+        month: date.toLocaleDateString('es', { month: 'short' }),
+        income: monthTransactions.filter(t => t.type === 'income').reduce((sum, t) => sum + t.amount, 0),
+        expenses: monthTransactions.filter(t => t.type === 'expense').reduce((sum, t) => sum + t.amount, 0),
+        balance: 0,
+      };
+    }).map(item => ({
+      ...item,
+      balance: item.income - item.expenses,
+    }));
+  }, [transactions]);
 
   // Category spending data
-  const categorySpending = transactions
-    .filter(t => t.type === 'expense')
-    .reduce((acc, trx) => {
-      const existing = acc.find(item => item.category === trx.category);
-      if (existing) {
-        existing.amount += trx.amount;
-        existing.count += 1;
-      } else {
-        acc.push({ category: trx.category, amount: trx.amount, count: 1 });
-      }
-      return acc;
-    }, [] as { category: string; amount: number; count: number }[])
-    .sort((a, b) => b.amount - a.amount)
-    .slice(0, 5);
+  const categorySpending = useMemo(() => {
+    return transactions
+      .filter(t => t.type === 'expense')
+      .reduce((acc, trx) => {
+        const existing = acc.find(item => item.category === trx.category);
+        if (existing) {
+          existing.amount += trx.amount;
+          existing.count += 1;
+        } else {
+          acc.push({ category: trx.category, amount: trx.amount, count: 1 });
+        }
+        return acc;
+      }, [] as { category: string; amount: number; count: number }[])
+      .sort((a, b) => b.amount - a.amount)
+      .slice(0, 5);
+  }, [transactions]);
 
   // Account performance
-  const accountPerformance = accounts.map(account => {
-    const accountTransactions = transactions.filter(t => t.accountId === account.id);
-    const totalIncome = accountTransactions.filter(t => t.type === 'income').reduce((sum, t) => sum + t.amount, 0);
-    const totalExpenses = accountTransactions.filter(t => t.type === 'expense').reduce((sum, t) => sum + t.amount, 0);
-    
-    return {
-      name: account.name,
-      balance: account.balance,
-      income: totalIncome,
-      expenses: totalExpenses,
-      transactions: accountTransactions.length,
-    };
-  });
+  const accountPerformance = useMemo(() => {
+    return accounts.map(account => {
+      const accountTransactions = transactions.filter(t => t.accountId === account.id);
+      const totalIncome = accountTransactions.filter(t => t.type === 'income').reduce((sum, t) => sum + t.amount, 0);
+      const totalExpenses = accountTransactions.filter(t => t.type === 'expense').reduce((sum, t) => sum + t.amount, 0);
+      
+      return {
+        name: account.name,
+        balance: account.balance,
+        income: totalIncome,
+        expenses: totalExpenses,
+        transactions: accountTransactions.length,
+      };
+    });
+  }, [accounts, transactions]);
 
   // Financial health metrics
-  const totalIncome = transactions.filter(t => t.type === 'income').reduce((sum, t) => sum + t.amount, 0);
-  const totalExpenses = transactions.filter(t => t.type === 'expense').reduce((sum, t) => sum + t.amount, 0);
-  const savingsRate = totalIncome > 0 ? ((totalIncome - totalExpenses) / totalIncome * 100) : 0;
-  const avgTransaction = transactions.length > 0 ? (totalIncome + totalExpenses) / transactions.length : 0;
+  const { totalIncome, totalExpenses, savingsRate, avgTransaction } = useMemo(() => {
+    const income = transactions.filter(t => t.type === 'income').reduce((sum, t) => sum + t.amount, 0);
+    const expenses = transactions.filter(t => t.type === 'expense').reduce((sum, t) => sum + t.amount, 0);
+    const rate = income > 0 ? ((income - expenses) / income * 100) : 0;
+    const avg = transactions.length > 0 ? (income + expenses) / transactions.length : 0;
+    return { totalIncome: income, totalExpenses: expenses, savingsRate: rate, avgTransaction: avg };
+  }, [transactions]);
 
   const COLORS = ['#3b82f6', '#ef4444', '#f59e0b', '#10b981', '#8b5cf6'];
 
@@ -86,8 +98,8 @@ const AdvancedStats: React.FC = () => {
       </div>
 
       {/* Financial Health Metrics */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 md:gap-6">
-        <div className={`rounded-2xl shadow-lg p-6 border transition-all duration-300 hover:scale-105 ${
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 md:gap-6 animate-fade-up">
+        <div className={`rounded-2xl shadow-lg p-6 border transition-all duration-300 hover:scale-105 card-surface ${
           isDarkMode
             ? 'bg-gradient-to-br from-gray-800 to-gray-700 border-gray-700'
             : 'bg-white border-gray-200'
@@ -117,7 +129,7 @@ const AdvancedStats: React.FC = () => {
           </div>
         </div>
 
-        <div className={`rounded-2xl shadow-lg p-6 border transition-all duration-300 hover:scale-105 ${
+        <div className={`rounded-2xl shadow-lg p-6 border transition-all duration-300 hover:scale-105 card-surface ${
           isDarkMode
             ? 'bg-gradient-to-br from-gray-800 to-gray-700 border-gray-700'
             : 'bg-white border-gray-200'
@@ -132,7 +144,7 @@ const AdvancedStats: React.FC = () => {
               <p className={`text-2xl font-bold transition-colors ${
                 isDarkMode ? 'text-white' : 'text-gray-800'
               }`}>
-                ${avgTransaction.toLocaleString('es-MX', { minimumFractionDigits: 2 })}
+                {formatCurrency(avgTransaction, currency)}
               </p>
             </div>
             <div className={`p-3 rounded-xl ${
@@ -143,7 +155,7 @@ const AdvancedStats: React.FC = () => {
           </div>
         </div>
 
-        <div className={`rounded-2xl shadow-lg p-6 border transition-all duration-300 hover:scale-105 ${
+        <div className={`rounded-2xl shadow-lg p-6 border transition-all duration-300 hover:scale-105 card-surface ${
           isDarkMode
             ? 'bg-gradient-to-br from-gray-800 to-gray-700 border-gray-700'
             : 'bg-white border-gray-200'
@@ -169,7 +181,7 @@ const AdvancedStats: React.FC = () => {
           </div>
         </div>
 
-        <div className={`rounded-2xl shadow-lg p-6 border transition-all duration-300 hover:scale-105 ${
+        <div className={`rounded-2xl shadow-lg p-6 border transition-all duration-300 hover:scale-105 card-surface ${
           isDarkMode
             ? 'bg-gradient-to-br from-gray-800 to-gray-700 border-gray-700'
             : 'bg-white border-gray-200'
@@ -197,7 +209,7 @@ const AdvancedStats: React.FC = () => {
       </div>
 
       {/* Monthly Trend */}
-      <div className={`rounded-2xl shadow-lg p-6 border transition-all duration-300 ${
+      <div className={`rounded-2xl shadow-lg p-6 border transition-all duration-300 card-surface ${
         isDarkMode
           ? 'bg-gradient-to-br from-gray-800 to-gray-700 border-gray-700'
           : 'bg-white border-gray-200'
@@ -235,9 +247,9 @@ const AdvancedStats: React.FC = () => {
         </ResponsiveContainer>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 md:gap-6">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 md:gap-6 animate-fade-up">
         {/* Top Categories */}
-        <div className={`rounded-2xl shadow-lg p-6 border transition-all duration-300 ${
+        <div className={`rounded-2xl shadow-lg p-6 border transition-all duration-300 card-surface ${
           isDarkMode
             ? 'bg-gradient-to-br from-gray-800 to-gray-700 border-gray-700'
             : 'bg-white border-gray-200'
@@ -275,7 +287,7 @@ const AdvancedStats: React.FC = () => {
         </div>
 
         {/* Account Performance */}
-        <div className={`rounded-2xl shadow-lg p-6 border transition-all duration-300 ${
+        <div className={`rounded-2xl shadow-lg p-6 border transition-all duration-300 card-surface ${
           isDarkMode
             ? 'bg-gradient-to-br from-gray-800 to-gray-700 border-gray-700'
             : 'bg-white border-gray-200'
@@ -316,7 +328,7 @@ const AdvancedStats: React.FC = () => {
       </div>
 
       {/* Detailed Account Table */}
-      <div className={`rounded-2xl shadow-lg p-6 border transition-all duration-300 ${
+      <div className={`rounded-2xl shadow-lg p-6 border transition-all duration-300 card-surface ${
         isDarkMode
           ? 'bg-gradient-to-br from-gray-800 to-gray-700 border-gray-700'
           : 'bg-white border-gray-200'
@@ -390,17 +402,17 @@ const AdvancedStats: React.FC = () => {
                     <td className={`py-3 px-4 text-right font-bold transition-colors ${
                       isDarkMode ? 'text-white' : 'text-gray-800'
                     }`}>
-                      ${account.balance.toLocaleString('es-MX', { minimumFractionDigits: 2 })}
+                      {formatCurrency(account.balance, currency)}
                     </td>
                     <td className={`py-3 px-4 text-right font-semibold transition-colors ${
                       isDarkMode ? 'text-green-400' : 'text-green-600'
                     }`}>
-                      +${account.income.toLocaleString('es-MX', { minimumFractionDigits: 2 })}
+                      +{formatCurrency(account.income, currency)}
                     </td>
                     <td className={`py-3 px-4 text-right font-semibold transition-colors ${
                       isDarkMode ? 'text-red-400' : 'text-red-600'
                     }`}>
-                      -${account.expenses.toLocaleString('es-MX', { minimumFractionDigits: 2 })}
+                      -{formatCurrency(account.expenses, currency)}
                     </td>
                     <td className={`py-3 px-4 text-right transition-colors ${
                       isDarkMode ? 'text-gray-400' : 'text-gray-600'
@@ -421,7 +433,7 @@ const AdvancedStats: React.FC = () => {
       </div>
 
       {/* Insights */}
-      <div className={`rounded-2xl shadow-lg p-6 border transition-all duration-300 ${
+      <div className={`rounded-2xl shadow-lg p-6 border transition-all duration-300 card-surface ${
         isDarkMode
           ? 'bg-gradient-to-br from-gray-800 to-gray-700 border-gray-700'
           : 'bg-white border-gray-200'
@@ -448,9 +460,9 @@ const AdvancedStats: React.FC = () => {
                 }`}>
                   {monthlyData.reduce((best, current) => 
                     current.balance > best.balance ? current : best
-                  ).month} con ${(monthlyData.reduce((best, current) => 
+                  ).month} con {formatCurrency((monthlyData.reduce((best, current) => 
                     current.balance > best.balance ? current : best
-                  ).balance).toLocaleString('es-MX', { minimumFractionDigits: 2 })} de ahorro
+                  ).balance), currency)} de ahorro
                 </p>
               </div>
             </div>
@@ -470,7 +482,7 @@ const AdvancedStats: React.FC = () => {
                 <p className={`text-sm transition-colors ${
                   isDarkMode ? 'text-gray-400' : 'text-gray-600'
                 }`}>
-                  {categorySpending[0]?.category || 'N/A'} con ${(categorySpending[0]?.amount || 0).toLocaleString('es-MX', { minimumFractionDigits: 2 })}
+                  {categorySpending[0]?.category || 'N/A'} con {formatCurrency((categorySpending[0]?.amount || 0), currency)}
                 </p>
               </div>
             </div>

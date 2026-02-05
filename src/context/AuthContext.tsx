@@ -1,12 +1,15 @@
 import React, { createContext, useContext, useReducer, useEffect, ReactNode } from 'react';
 import { User, AuthState } from '../types';
-import { auth, signIn, signUp, signOut, getUserData } from '../firebase/config';
+import { auth, signIn, signUp, signOut, getUserData, updateUserData, functions } from '../firebase/config';
 import { onAuthStateChanged } from 'firebase/auth';
+import { httpsCallable } from 'firebase/functions';
+import { identifyUser } from '../utils/analytics';
 
 interface AuthContextType extends AuthState {
   login: (email: string, password: string) => Promise<{ success: boolean; error?: string; errorCode?: string }>;
   register: (email: string, password: string, name: string) => Promise<{ success: boolean; error?: string; errorCode?: string }>;
   logout: () => void;
+  updateProfileName: (name: string) => Promise<{ success: boolean; error?: string }>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -83,6 +86,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         };
         
         dispatch({ type: 'LOGIN_SUCCESS', payload: basicUser });
+        identifyUser(basicUser.id, { email: basicUser.email, name: basicUser.name });
         
         // Luego intentar obtener datos completos (en segundo plano)
         try {
@@ -95,9 +99,48 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
               createdAt: userData.data.createdAt?.toDate() || new Date()
             };
             dispatch({ type: 'LOGIN_SUCCESS', payload: completeUser });
+            identifyUser(completeUser.id, { email: completeUser.email, name: completeUser.name });
           }
         } catch (error) {
           console.log('Error obteniendo datos completos, usando datos básicos:', error);
+        }
+
+        // Obtener moneda por país (solo la primera vez)
+        try {
+          if (!localStorage.getItem('preferredCurrency')) {
+            const callable = httpsCallable(functions, 'getGeoCurrency');
+            const result: any = await callable();
+            const currency = result?.data?.currency || 'USD';
+            const country = result?.data?.country || '';
+            localStorage.setItem('preferredCurrency', currency);
+            if (country) {
+              localStorage.setItem('preferredCountry', country);
+            }
+            // Guardar en Firestore para persistencia multi-dispositivo
+            if (firebaseUser?.uid) {
+              await updateUserData(firebaseUser.uid, {
+                preferredCurrency: currency,
+                preferredCountry: country,
+              });
+            }
+          } else {
+            // Si ya existe, intentar sincronizar desde Firestore si hay datos
+            try {
+              const existing = await getUserData(firebaseUser.uid);
+              if (existing.success && existing.data) {
+                if (existing.data.preferredCurrency) {
+                  localStorage.setItem('preferredCurrency', existing.data.preferredCurrency);
+                }
+                if (existing.data.preferredCountry) {
+                  localStorage.setItem('preferredCountry', existing.data.preferredCountry);
+                }
+              }
+            } catch (e) {
+              // no bloquear
+            }
+          }
+        } catch (error) {
+          // No bloquear la sesión si falla
         }
       } else {
         // No hay usuario autenticado
@@ -193,6 +236,21 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     }
   };
 
+  const updateProfileName = async (name: string): Promise<{ success: boolean; error?: string }> => {
+    if (!state.user?.id) return { success: false, error: 'Usuario no autenticado' };
+    try {
+      const result = await updateUserData(state.user.id, { name });
+      if (result.success) {
+        const updatedUser = { ...state.user, name };
+        dispatch({ type: 'LOGIN_SUCCESS', payload: updatedUser });
+        return { success: true };
+      }
+      return { success: false, error: result.error };
+    } catch (error: any) {
+      return { success: false, error: error.message };
+    }
+  };
+
   return (
     <AuthContext.Provider
       value={{
@@ -200,6 +258,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         login,
         register,
         logout,
+        updateProfileName,
       }}
     >
       {children}

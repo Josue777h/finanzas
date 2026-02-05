@@ -1,7 +1,10 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useFinance } from '../context/FinanceContext';
 import { useAuth } from '../context/AuthContext';
 import { useTheme } from '../context/ThemeContext';
+import { useSimpleMode } from '../context/SimpleModeContext';
+import { useCurrency } from '../context/CurrencyContext';
+import { formatCurrency } from '../utils/formatCurrency';
 import { Plus, CreditCard, Wallet, PiggyBank, TrendingUp, Edit2, Trash2 } from 'lucide-react';
 
 const accountIcons = {
@@ -30,6 +33,8 @@ const Accounts: React.FC = () => {
   const { accounts, addAccount, updateAccount, deleteAccount } = useFinance();
   const { user } = useAuth();
   const { isDarkMode } = useTheme();
+  const { isSimpleMode } = useSimpleMode();
+  const { currency } = useCurrency();
   const accountColors = getAccountColors(isDarkMode);
   const [showModal, setShowModal] = useState(false);
   const [editingAccount, setEditingAccount] = useState<string | null>(null);
@@ -37,8 +42,16 @@ const Accounts: React.FC = () => {
     name: '',
     type: 'checking' as const,
     balance: '',
-    currency: 'MXN',
+    currency: currency,
   });
+  const [quickAccount, setQuickAccount] = useState({
+    name: '',
+    balance: '',
+  });
+
+  useEffect(() => {
+    setFormData((prev) => ({ ...prev, currency }));
+  }, [currency]);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -65,7 +78,7 @@ const Accounts: React.FC = () => {
       name: '',
       type: 'checking',
       balance: '',
-      currency: 'MXN',
+      currency: currency,
     });
     setShowModal(false);
     setEditingAccount(null);
@@ -88,10 +101,90 @@ const Accounts: React.FC = () => {
     }
   };
 
+  const handleQuickCreate = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!quickAccount.name || !quickAccount.balance) return;
+    addAccount({
+      name: quickAccount.name,
+      type: 'checking',
+      balance: parseFloat(quickAccount.balance),
+      currency: currency,
+      userId: user?.id || '',
+    });
+    setQuickAccount({ name: '', balance: '' });
+  };
+
   const totalBalance = accounts.reduce((sum, account) => sum + account.balance, 0);
 
   return (
     <div className="space-y-6">
+      {isSimpleMode && (
+        <div className={`rounded-2xl shadow-lg p-6 border transition-all duration-300 card-surface ${
+          isDarkMode
+            ? 'bg-gradient-to-br from-gray-800 to-gray-700 border-gray-700'
+            : 'bg-white border-gray-200'
+        }`}>
+          <h2 className={`text-lg font-bold mb-4 transition-colors ${
+            isDarkMode ? 'text-white' : 'text-gray-800'
+          }`}>
+            Crear cuenta rápido
+          </h2>
+          <form onSubmit={handleQuickCreate} className="grid grid-cols-1 md:grid-cols-5 gap-3">
+            <div className="md:col-span-3">
+              <label className={`block text-sm font-semibold mb-1 ${
+                isDarkMode ? 'text-gray-300' : 'text-gray-700'
+              }`}>
+                Nombre
+              </label>
+              <input
+                type="text"
+                value={quickAccount.name}
+                onChange={(e) => setQuickAccount({ ...quickAccount, name: e.target.value })}
+                className={`w-full px-4 py-2.5 rounded-xl transition-all duration-200 ${
+                  isDarkMode
+                    ? 'bg-gray-700/50 border border-gray-600 text-white placeholder-gray-500 focus:border-blue-500'
+                    : 'bg-gray-50 border border-gray-200 text-gray-800 placeholder-gray-400 focus:border-blue-500'
+                }`}
+                placeholder="Ej: Cuenta principal"
+                required
+              />
+            </div>
+            <div className="md:col-span-1">
+              <label className={`block text-sm font-semibold mb-1 ${
+                isDarkMode ? 'text-gray-300' : 'text-gray-700'
+              }`}>
+                Balance
+              </label>
+              <input
+                type="number"
+                value={quickAccount.balance}
+                onChange={(e) => setQuickAccount({ ...quickAccount, balance: e.target.value })}
+                className={`w-full px-4 py-2.5 rounded-xl transition-all duration-200 ${
+                  isDarkMode
+                    ? 'bg-gray-700/50 border border-gray-600 text-white placeholder-gray-500 focus:border-blue-500'
+                    : 'bg-gray-50 border border-gray-200 text-gray-800 placeholder-gray-400 focus:border-blue-500'
+                }`}
+                placeholder="0.00"
+                step="0.01"
+                required
+              />
+            </div>
+            <div className="md:col-span-1 flex items-end">
+              <button
+                type="submit"
+                className={`w-full py-2.5 rounded-xl font-semibold transition-all duration-200 ${
+                  isDarkMode
+                    ? 'bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-500 hover:to-purple-500 text-white'
+                    : 'bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white'
+                }`}
+              >
+                Crear
+              </button>
+            </div>
+          </form>
+        </div>
+      )}
+
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <div>
           <h1 className={`text-3xl font-bold transition-colors ${
@@ -107,7 +200,7 @@ const Accounts: React.FC = () => {
         </div>
         <button
           onClick={() => setShowModal(true)}
-          className={`px-4 py-2.5 rounded-xl font-semibold transition-all duration-200 flex items-center space-x-2 ${
+          className={`px-4 py-2.5 rounded-xl font-semibold transition-all duration-200 flex items-center space-x-2 btn-accent ${
             isDarkMode
               ? 'bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-500 hover:to-purple-500 text-white shadow-lg shadow-blue-500/30'
               : 'bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white shadow-lg shadow-blue-500/30'
@@ -118,7 +211,7 @@ const Accounts: React.FC = () => {
         </button>
       </div>
 
-      <div className={`rounded-2xl shadow-lg p-6 border transition-all duration-300 ${
+      <div className={`rounded-2xl shadow-lg p-6 border transition-all duration-300 card-surface ${
         isDarkMode
           ? 'bg-gradient-to-br from-gray-800 to-gray-700 border-gray-700'
           : 'bg-white border-gray-200'
@@ -132,7 +225,7 @@ const Accounts: React.FC = () => {
           <p className={`text-2xl font-bold transition-colors ${
             isDarkMode ? 'text-white' : 'text-gray-800'
           }`}>
-            ${totalBalance.toLocaleString('es-MX', { minimumFractionDigits: 2 })}
+            {formatCurrency(totalBalance, currency)}
           </p>
         </div>
 
@@ -191,12 +284,12 @@ const Accounts: React.FC = () => {
                   <div className={`text-xl font-bold transition-colors ${
                     isDarkMode ? 'text-white' : 'text-gray-800'
                   }`}>
-                    ${account.balance.toLocaleString('es-MX', { minimumFractionDigits: 2 })}
+                    {formatCurrency(account.balance, currency)}
                   </div>
                   <div className={`text-sm transition-colors ${
                     isDarkMode ? 'text-gray-400' : 'text-gray-500'
                   }`}>
-                    {account.currency}
+                    {currency}
                   </div>
                 </div>
               );
@@ -309,19 +402,13 @@ const Accounts: React.FC = () => {
                 }`}>
                   Moneda
                 </label>
-                <select
-                  value={formData.currency}
-                  onChange={(e) => setFormData({ ...formData, currency: e.target.value })}
-                  className={`w-full px-4 py-2.5 rounded-xl transition-all duration-200 ${
-                    isDarkMode
-                      ? 'bg-gray-700/50 border border-gray-600 text-white focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20'
-                      : 'bg-gray-50 border border-gray-200 text-gray-800 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20'
-                  }`}
-                >
-                  <option value="MXN">MXN - Peso Mexicano</option>
-                  <option value="USD">USD - Dólar Americano</option>
-                  <option value="EUR">EUR - Euro</option>
-                </select>
+                <div className={`w-full px-4 py-2.5 rounded-xl border ${
+                  isDarkMode
+                    ? 'bg-gray-700/50 border-gray-600 text-white'
+                    : 'bg-gray-50 border-gray-200 text-gray-800'
+                }`}>
+                  {currency}
+                </div>
               </div>
 
               <div className="flex space-x-3 pt-4">

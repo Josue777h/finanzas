@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { useTheme } from '../context/ThemeContext';
-import { Home, CreditCard, TrendingUp, Settings, User, LogOut, Moon, Sun, BarChart3, Menu, X } from 'lucide-react';
+import { useSimpleMode } from '../context/SimpleModeContext';
+import { Home, CreditCard, TrendingUp, Settings, User, LogOut, Moon, Sun, BarChart3, Menu, X, HelpCircle } from 'lucide-react';
 
 interface LayoutProps {
   children: React.ReactNode;
@@ -12,6 +13,7 @@ interface LayoutProps {
 const Layout: React.FC<LayoutProps> = ({ children, currentPage, onPageChange }) => {
   const { user, logout } = useAuth();
   const { isDarkMode, toggleDarkMode } = useTheme();
+  const { isSimpleMode } = useSimpleMode();
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
 
   const menuItems = [
@@ -20,13 +22,21 @@ const Layout: React.FC<LayoutProps> = ({ children, currentPage, onPageChange }) 
     { id: 'transactions', label: 'Transacciones', icon: TrendingUp },
     { id: 'stats', label: 'Estadísticas', icon: BarChart3 },
     { id: 'profile', label: 'Perfil', icon: User },
+    { id: 'help', label: 'Ayuda', icon: HelpCircle },
     { id: 'settings', label: 'Ajustes', icon: Settings },
   ];
+  const simpleMenuIds = new Set(['home', 'accounts', 'transactions', 'help', 'settings']);
+  const visibleMenuItems = isSimpleMode
+    ? menuItems.filter((item) => simpleMenuIds.has(item.id))
+    : menuItems;
 
   return (
-    <div className={`min-h-screen transition-colors duration-300 ${
-      isDarkMode ? 'bg-gradient-to-br from-gray-900 via-gray-800 to-gray-900' : 'bg-gradient-to-br from-gray-50 to-blue-50/30'
-    }`}>
+    <div className="min-h-screen transition-colors duration-300 app-bg">
+      {/* Fondos decorativos */}
+      <div className="pointer-events-none fixed inset-0 -z-10 overflow-hidden">
+        <div className="absolute -top-32 -right-32 h-80 w-80 rounded-full blur-3xl opacity-30 bg-teal-400/30 animate-float-slow"></div>
+        <div className="absolute -bottom-32 -left-32 h-80 w-80 rounded-full blur-3xl opacity-30 bg-amber-400/30 animate-float-slow"></div>
+      </div>
       {/* Header móvil fijo - Siempre visible */}
       <div className={`lg:hidden transition-all duration-300 ${
         isDarkMode 
@@ -36,8 +46,8 @@ const Layout: React.FC<LayoutProps> = ({ children, currentPage, onPageChange }) 
         <div className="flex items-center gap-3">
           <div className={`p-2 rounded-xl ${
             isDarkMode 
-              ? 'bg-gradient-to-br from-blue-600 to-purple-600' 
-              : 'bg-gradient-to-br from-blue-500 to-indigo-600'
+              ? 'bg-gradient-to-br from-teal-600 to-cyan-600' 
+              : 'bg-gradient-to-br from-teal-500 to-cyan-500'
           }`}>
             <Home className="text-white" size={20} />
           </div>
@@ -80,7 +90,7 @@ const Layout: React.FC<LayoutProps> = ({ children, currentPage, onPageChange }) 
             </button>
           </div>
           <div className="p-4 overflow-y-auto max-h-[calc(100vh-80px)]">
-            {menuItems.map((item) => {
+            {visibleMenuItems.map((item) => {
               const Icon = item.icon;
               const isActive = currentPage === item.id;
               return (
@@ -93,8 +103,8 @@ const Layout: React.FC<LayoutProps> = ({ children, currentPage, onPageChange }) 
                   className={`w-full flex items-center space-x-3 px-4 py-3.5 rounded-xl transition-all duration-200 mb-2 ${
                     isActive
                       ? isDarkMode
-                        ? 'bg-gradient-to-r from-blue-600 to-purple-600 text-white shadow-lg shadow-blue-500/30'
-                        : 'bg-gradient-to-r from-blue-500 to-indigo-500 text-white shadow-lg shadow-blue-500/30'
+                        ? 'bg-gradient-to-r from-teal-600 to-emerald-500 text-white shadow-lg shadow-teal-500/30'
+                        : 'bg-gradient-to-r from-teal-500 to-emerald-400 text-white shadow-lg shadow-teal-500/30'
                       : isDarkMode
                         ? 'text-gray-300 hover:bg-gray-700/50 hover:text-white'
                         : 'text-gray-700 hover:bg-gray-100 hover:text-gray-900'
@@ -153,8 +163,8 @@ const Layout: React.FC<LayoutProps> = ({ children, currentPage, onPageChange }) 
             <div className="flex items-center gap-3 mb-2">
               <div className={`p-2 rounded-xl ${
                 isDarkMode 
-                  ? 'bg-gradient-to-br from-blue-600 to-purple-600' 
-                  : 'bg-gradient-to-br from-blue-500 to-indigo-600'
+              ? 'bg-gradient-to-br from-teal-600 to-cyan-600' 
+              : 'bg-gradient-to-br from-teal-500 to-cyan-500'
               }`}>
                 <Home className="text-white" size={20} />
               </div>
@@ -168,7 +178,7 @@ const Layout: React.FC<LayoutProps> = ({ children, currentPage, onPageChange }) 
           </div>
           
           <nav className="p-4">
-            {menuItems.map((item) => {
+            {visibleMenuItems.map((item) => {
               const Icon = item.icon;
               const isActive = currentPage === item.id;
               return (
@@ -178,8 +188,8 @@ const Layout: React.FC<LayoutProps> = ({ children, currentPage, onPageChange }) 
                   className={`w-full flex items-center space-x-3 px-4 py-3.5 rounded-xl transition-all duration-200 mb-2 ${
                     isActive
                       ? isDarkMode
-                        ? 'bg-gradient-to-r from-blue-600 to-purple-600 text-white shadow-lg shadow-blue-500/30'
-                        : 'bg-gradient-to-r from-blue-500 to-indigo-500 text-white shadow-lg shadow-blue-500/30'
+                        ? 'bg-gradient-to-r from-teal-600 to-emerald-500 text-white shadow-lg shadow-teal-500/30'
+                        : 'bg-gradient-to-r from-teal-500 to-emerald-400 text-white shadow-lg shadow-teal-500/30'
                       : isDarkMode
                         ? 'text-gray-300 hover:bg-gray-700/50 hover:text-white'
                         : 'text-gray-700 hover:bg-gray-100 hover:text-gray-900'

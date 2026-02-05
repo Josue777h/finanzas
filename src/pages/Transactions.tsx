@@ -2,12 +2,17 @@ import React, { useState } from 'react';
 import { useFinance } from '../context/FinanceContext';
 import { useAuth } from '../context/AuthContext';
 import { useTheme } from '../context/ThemeContext';
+import { useSimpleMode } from '../context/SimpleModeContext';
+import { useCurrency } from '../context/CurrencyContext';
+import { formatCurrency } from '../utils/formatCurrency';
 import { Plus, TrendingUp, TrendingDown, Edit2, Trash2, Search } from 'lucide-react';
 
 const Transactions: React.FC = () => {
   const { accounts, transactions, categories, addTransaction, updateTransaction, deleteTransaction } = useFinance();
   const { user } = useAuth();
   const { isDarkMode } = useTheme();
+  const { isSimpleMode } = useSimpleMode();
+  const { currency } = useCurrency();
   const [showModal, setShowModal] = useState(false);
   const [editingTransaction, setEditingTransaction] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
@@ -20,6 +25,37 @@ const Transactions: React.FC = () => {
     category: '',
     description: '',
   });
+  const [quickData, setQuickData] = useState({
+    accountId: '',
+    amount: '',
+    type: 'expense' as 'income' | 'expense',
+    category: '',
+    description: '',
+  });
+
+  // Defaults inteligentes para el formulario rápido
+  React.useEffect(() => {
+    if (!accounts.length) return;
+
+    const latestTransaction = transactions.reduce((latest, trx) => {
+      if (!latest) return trx;
+      return new Date(trx.date) > new Date(latest.date) ? trx : latest;
+    }, null as any);
+
+    setQuickData((prev) => {
+      const next = { ...prev };
+      if (!next.accountId) {
+        next.accountId = latestTransaction?.accountId || accounts[0].id;
+      }
+      if (!next.category) {
+        const available = categories.filter((cat) =>
+          prev.type === 'income' ? cat.type === 'income' : cat.type === 'expense'
+        );
+        next.category = latestTransaction?.category || available[0]?.name || '';
+      }
+      return next;
+    });
+  }, [accounts, categories, transactions]);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -72,6 +108,26 @@ const Transactions: React.FC = () => {
     }
   };
 
+  const handleQuickAdd = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!quickData.amount || !quickData.accountId || !quickData.category) return;
+
+    addTransaction({
+      accountId: quickData.accountId,
+      amount: parseFloat(quickData.amount),
+      type: quickData.type,
+      category: quickData.category,
+      description: quickData.description || (quickData.type === 'income' ? 'Ingreso' : 'Gasto'),
+      userId: user?.id || '',
+    });
+
+    setQuickData((prev) => ({
+      ...prev,
+      amount: '',
+      description: '',
+    }));
+  };
+
   const filteredTransactions = transactions
     .filter(transaction => {
       const matchesSearch = transaction.description.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -93,9 +149,145 @@ const Transactions: React.FC = () => {
   const availableCategories = categories.filter(cat => 
     formData.type === 'income' ? cat.type === 'income' : cat.type === 'expense'
   );
+  const quickCategories = categories.filter(cat =>
+    quickData.type === 'income' ? cat.type === 'income' : cat.type === 'expense'
+  );
 
   return (
     <div className="space-y-6">
+      {isSimpleMode && (
+        <div className={`rounded-2xl shadow-lg p-6 border transition-all duration-300 card-surface ${
+          isDarkMode
+            ? 'bg-gradient-to-br from-gray-800 to-gray-700 border-gray-700'
+            : 'bg-white border-gray-200'
+        }`}>
+          <h2 className={`text-lg font-bold mb-4 transition-colors ${
+            isDarkMode ? 'text-white' : 'text-gray-800'
+          }`}>
+            Registro rápido
+          </h2>
+          <form onSubmit={handleQuickAdd} className="grid grid-cols-1 md:grid-cols-6 gap-3">
+            <div className="md:col-span-1">
+              <label className={`block text-sm font-semibold mb-1 ${
+                isDarkMode ? 'text-gray-300' : 'text-gray-700'
+              }`}>
+                Tipo
+              </label>
+              <select
+                value={quickData.type}
+                onChange={(e) => setQuickData({ ...quickData, type: e.target.value as any, category: '' })}
+                className={`w-full px-3 py-2.5 rounded-xl transition-all duration-200 ${
+                  isDarkMode
+                    ? 'bg-gray-700/50 border border-gray-600 text-white focus:border-blue-500'
+                    : 'bg-gray-50 border border-gray-200 text-gray-800 focus:border-blue-500'
+                }`}
+              >
+                <option value="expense">Gasto</option>
+                <option value="income">Ingreso</option>
+              </select>
+            </div>
+            <div className="md:col-span-1">
+              <label className={`block text-sm font-semibold mb-1 ${
+                isDarkMode ? 'text-gray-300' : 'text-gray-700'
+              }`}>
+                Monto
+              </label>
+              <input
+                type="number"
+                value={quickData.amount}
+                onChange={(e) => setQuickData({ ...quickData, amount: e.target.value })}
+                className={`w-full px-3 py-2.5 rounded-xl transition-all duration-200 ${
+                  isDarkMode
+                    ? 'bg-gray-700/50 border border-gray-600 text-white placeholder-gray-500 focus:border-blue-500'
+                    : 'bg-gray-50 border border-gray-200 text-gray-800 placeholder-gray-400 focus:border-blue-500'
+                }`}
+                placeholder="0.00"
+                step="0.01"
+                required
+              />
+            </div>
+            <div className="md:col-span-2">
+              <label className={`block text-sm font-semibold mb-1 ${
+                isDarkMode ? 'text-gray-300' : 'text-gray-700'
+              }`}>
+                Categoría
+              </label>
+              <select
+                value={quickData.category}
+                onChange={(e) => setQuickData({ ...quickData, category: e.target.value })}
+                className={`w-full px-3 py-2.5 rounded-xl transition-all duration-200 ${
+                  isDarkMode
+                    ? 'bg-gray-700/50 border border-gray-600 text-white focus:border-blue-500'
+                    : 'bg-gray-50 border border-gray-200 text-gray-800 focus:border-blue-500'
+                }`}
+                required
+              >
+                <option value="">Selecciona</option>
+                {quickCategories.map(category => (
+                  <option key={category.id} value={category.name}>
+                    {category.icon} {category.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div className="md:col-span-2">
+              <label className={`block text-sm font-semibold mb-1 ${
+                isDarkMode ? 'text-gray-300' : 'text-gray-700'
+              }`}>
+                Cuenta
+              </label>
+              <select
+                value={quickData.accountId}
+                onChange={(e) => setQuickData({ ...quickData, accountId: e.target.value })}
+                className={`w-full px-3 py-2.5 rounded-xl transition-all duration-200 ${
+                  isDarkMode
+                    ? 'bg-gray-700/50 border border-gray-600 text-white focus:border-blue-500'
+                    : 'bg-gray-50 border border-gray-200 text-gray-800 focus:border-blue-500'
+                }`}
+                required
+              >
+                <option value="">Selecciona</option>
+                {accounts.map(account => (
+                  <option key={account.id} value={account.id}>
+                    {account.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div className="md:col-span-5">
+              <label className={`block text-sm font-semibold mb-1 ${
+                isDarkMode ? 'text-gray-300' : 'text-gray-700'
+              }`}>
+                Descripción (opcional)
+              </label>
+              <input
+                type="text"
+                value={quickData.description}
+                onChange={(e) => setQuickData({ ...quickData, description: e.target.value })}
+                className={`w-full px-3 py-2.5 rounded-xl transition-all duration-200 ${
+                  isDarkMode
+                    ? 'bg-gray-700/50 border border-gray-600 text-white placeholder-gray-500 focus:border-blue-500'
+                    : 'bg-gray-50 border border-gray-200 text-gray-800 placeholder-gray-400 focus:border-blue-500'
+                }`}
+                placeholder="Ej: Comida"
+              />
+            </div>
+            <div className="md:col-span-1 flex items-end">
+              <button
+                type="submit"
+                className={`w-full py-2.5 rounded-xl font-semibold transition-all duration-200 btn-accent ${
+                  isDarkMode
+                    ? 'bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-500 hover:to-purple-500 text-white'
+                    : 'bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white'
+                }`}
+              >
+                Guardar
+              </button>
+            </div>
+          </form>
+        </div>
+      )}
+
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <div>
           <h1 className={`text-3xl font-bold transition-colors ${
@@ -111,7 +303,7 @@ const Transactions: React.FC = () => {
         </div>
         <button
           onClick={() => setShowModal(true)}
-          className={`px-4 py-2.5 rounded-xl font-semibold transition-all duration-200 flex items-center space-x-2 ${
+          className={`px-4 py-2.5 rounded-xl font-semibold transition-all duration-200 flex items-center space-x-2 btn-accent ${
             isDarkMode
               ? 'bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-500 hover:to-purple-500 text-white shadow-lg shadow-blue-500/30'
               : 'bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white shadow-lg shadow-blue-500/30'
@@ -122,8 +314,8 @@ const Transactions: React.FC = () => {
         </button>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 md:gap-6">
-        <div className={`rounded-2xl shadow-lg p-6 border transition-all duration-300 hover:scale-105 ${
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 md:gap-6 animate-fade-up">
+        <div className={`rounded-2xl shadow-lg p-6 border transition-all duration-300 hover:scale-105 card-surface ${
           isDarkMode
             ? 'bg-gradient-to-br from-gray-800 to-gray-700 border-gray-700'
             : 'bg-white border-gray-200'
@@ -138,7 +330,7 @@ const Transactions: React.FC = () => {
               <p className={`text-2xl font-bold transition-colors ${
                 isDarkMode ? 'text-green-400' : 'text-green-600'
               }`}>
-                ${totalIncome.toLocaleString('es-MX', { minimumFractionDigits: 2 })}
+                {formatCurrency(totalIncome, currency)}
               </p>
             </div>
             <div className={`p-3 rounded-xl ${
@@ -149,7 +341,7 @@ const Transactions: React.FC = () => {
           </div>
         </div>
 
-        <div className={`rounded-2xl shadow-lg p-6 border transition-all duration-300 hover:scale-105 ${
+        <div className={`rounded-2xl shadow-lg p-6 border transition-all duration-300 hover:scale-105 card-surface ${
           isDarkMode
             ? 'bg-gradient-to-br from-gray-800 to-gray-700 border-gray-700'
             : 'bg-white border-gray-200'
@@ -164,7 +356,7 @@ const Transactions: React.FC = () => {
               <p className={`text-2xl font-bold transition-colors ${
                 isDarkMode ? 'text-red-400' : 'text-red-600'
               }`}>
-                ${totalExpenses.toLocaleString('es-MX', { minimumFractionDigits: 2 })}
+                {formatCurrency(totalExpenses, currency)}
               </p>
             </div>
             <div className={`p-3 rounded-xl ${
@@ -175,7 +367,7 @@ const Transactions: React.FC = () => {
           </div>
         </div>
 
-        <div className={`rounded-2xl shadow-lg p-6 border transition-all duration-300 hover:scale-105 ${
+        <div className={`rounded-2xl shadow-lg p-6 border transition-all duration-300 hover:scale-105 card-surface ${
           isDarkMode
             ? 'bg-gradient-to-br from-gray-800 to-gray-700 border-gray-700'
             : 'bg-white border-gray-200'
@@ -192,7 +384,7 @@ const Transactions: React.FC = () => {
                   ? isDarkMode ? 'text-green-400' : 'text-green-600'
                   : isDarkMode ? 'text-red-400' : 'text-red-600'
               }`}>
-                ${(totalIncome - totalExpenses).toLocaleString('es-MX', { minimumFractionDigits: 2 })}
+                {formatCurrency(totalIncome - totalExpenses, currency)}
               </p>
             </div>
             <div className={`p-3 rounded-xl ${
@@ -210,7 +402,7 @@ const Transactions: React.FC = () => {
         </div>
       </div>
 
-      <div className={`rounded-2xl shadow-lg p-6 border transition-all duration-300 ${
+      <div className={`rounded-2xl shadow-lg p-6 border transition-all duration-300 card-surface ${
         isDarkMode
           ? 'bg-gradient-to-br from-gray-800 to-gray-700 border-gray-700'
           : 'bg-white border-gray-200'
@@ -345,7 +537,7 @@ const Transactions: React.FC = () => {
                           ? isDarkMode ? 'text-green-400' : 'text-green-600'
                           : isDarkMode ? 'text-red-400' : 'text-red-600'
                       }`}>
-                        {transaction.type === 'income' ? '+' : '-'}${transaction.amount.toLocaleString('es-MX', { minimumFractionDigits: 2 })}
+                        {transaction.type === 'income' ? '+' : '-'}{formatCurrency(transaction.amount, currency)}
                       </td>
                       <td className="py-3 px-4">
                         <div className="flex justify-center space-x-2">
@@ -540,7 +732,7 @@ const Transactions: React.FC = () => {
                   <option value="">Selecciona una cuenta</option>
                   {accounts.map(account => (
                     <option key={account.id} value={account.id}>
-                      {account.name} (${account.balance.toLocaleString('es-MX', { minimumFractionDigits: 2 })})
+                      {account.name} ({formatCurrency(account.balance, currency)})
                     </option>
                   ))}
                 </select>

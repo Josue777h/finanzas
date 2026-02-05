@@ -2,21 +2,30 @@ import React, { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { useFinance } from '../context/FinanceContext';
 import { useTheme } from '../context/ThemeContext';
+import { useSimpleMode } from '../context/SimpleModeContext';
 import { Bell, Shield, Database, HelpCircle, Download, Trash2, Mail, AlertTriangle, FileText, Send } from 'lucide-react';
 import { exportTransactionsToExcel, exportAccountsToExcel, exportFullReportToExcel } from '../utils/exportToExcel';
-import { clearCache } from '../firebase/config';
+import { clearCache, deleteAllUserData, deleteCurrentUser, updateUserData } from '../firebase/config';
 import { sendMonthlyReport, generateAndDownloadMonthlyReport } from '../utils/monthlyReportService';
 import { checkAndSendAlerts } from '../utils/emailService';
+import { requestPushPermission } from '../utils/pushService';
+import { httpsCallable } from 'firebase/functions';
+import { functions } from '../firebase/config';
+import { useCurrency } from '../context/CurrencyContext';
 
 const Settings: React.FC = () => {
   const { user, logout } = useAuth();
   const { transactions, accounts, categories } = useFinance();
   const { isDarkMode } = useTheme();
+  const { isSimpleMode, toggleSimpleMode } = useSimpleMode();
   
   const [notifications, setNotifications] = useState({
     emailAlerts: true,
-    monthlyReport: true
+    monthlyReport: true,
+    pushNotifications: false
   });
+
+  const { currency, setCurrency } = useCurrency();
   
   const [privacy, setPrivacy] = useState({
     dataSharing: false,
@@ -52,6 +61,12 @@ const Settings: React.FC = () => {
       localStorage.setItem(`storage_${user.id}`, JSON.stringify(storage));
     }
   }, [notifications, privacy, storage, user?.id]);
+
+  useEffect(() => {
+    if (user?.id) {
+      updateUserData(user.id, { preferredCurrency: currency });
+    }
+  }, [currency, user?.id]);
 
   const handleExportTransactions = () => {
     exportTransactionsToExcel(transactions, accounts);
@@ -132,24 +147,53 @@ const Settings: React.FC = () => {
     }
     
     try {
-      // Eliminar datos del usuario de localStorage
-      if (user?.id) {
-        localStorage.removeItem(`accounts_${user.id}`);
-        localStorage.removeItem(`transactions_${user.id}`);
-        localStorage.removeItem(`categories_${user.id}`);
-        localStorage.removeItem(`notifications_${user.id}`);
-        localStorage.removeItem(`privacy_${user.id}`);
-        localStorage.removeItem(`storage_${user.id}`);
+      if (!user?.id) {
+        alert('No se pudo identificar tu usuario.');
+        return;
       }
-      
-      // Cerrar sesión
+
+      // Eliminar datos del usuario en Firestore
+      const deleteDataResult = await deleteAllUserData(user.id);
+      if (!deleteDataResult.success) {
+        alert('No se pudieron eliminar todos los datos. Intenta de nuevo.');
+        return;
+      }
+
+      // Eliminar usuario de Auth (requiere sesión reciente)
+      const deleteUserResult = await deleteCurrentUser();
+      if (!deleteUserResult.success) {
+        alert('Tus datos se eliminaron, pero no se pudo eliminar el usuario. Vuelve a iniciar sesión e intenta de nuevo.');
+      }
+
+      // Limpiar localStorage
+      localStorage.removeItem(`accounts_${user.id}`);
+      localStorage.removeItem(`transactions_${user.id}`);
+      localStorage.removeItem(`categories_${user.id}`);
+      localStorage.removeItem(`notifications_${user.id}`);
+      localStorage.removeItem(`privacy_${user.id}`);
+      localStorage.removeItem(`storage_${user.id}`);
+
       await logout();
-      
-      alert('Tu cuenta y todos tus datos han sido eliminados permanentemente.');
+      alert('Tu cuenta y todos tus datos han sido eliminados.');
       window.location.reload();
     } catch (error) {
       console.error('Error eliminando cuenta:', error);
       alert('Hubo un error al eliminar tu cuenta. Por favor intenta nuevamente.');
+    }
+  };
+
+  const handleTestPush = async () => {
+    if (!user?.id) return;
+    try {
+      const callable = httpsCallable(functions, 'sendPushToUser');
+      await callable({
+        userId: user.id,
+        title: 'FinanzasApp',
+        body: 'Notificación de prueba'
+      });
+      alert('✅ Notificación enviada. Revisa tu navegador.');
+    } catch (error) {
+      alert('❌ Error enviando notificación push.');
     }
   };
 
@@ -165,7 +209,18 @@ const Settings: React.FC = () => {
     }
   };
 
-  const toggleNotification = (key: keyof typeof notifications) => {
+  const toggleNotification = async (key: keyof typeof notifications) => {
+    if (key === 'pushNotifications') {
+      if (!user?.id) return;
+      const nextValue = !notifications.pushNotifications;
+      if (nextValue) {
+        const result = await requestPushPermission(user.id);
+        if (!result.success) {
+          alert(result.error || 'No se pudo activar notificaciones push');
+          return;
+        }
+      }
+    }
     setNotifications(prev => ({ ...prev, [key]: !prev[key] }));
   };
 
@@ -192,8 +247,54 @@ const Settings: React.FC = () => {
         </p>
       </div>
 
+      {/* Experiencia de Uso */}
+      <div className={`rounded-2xl shadow-lg border transition-all duration-300 card-surface ${
+        isDarkMode
+          ? 'bg-gradient-to-br from-gray-800 to-gray-700 border-gray-700'
+          : 'bg-white border-gray-200'
+      }`}>
+        <div className={`p-6 border-b transition-colors ${
+          isDarkMode ? 'border-gray-700' : 'border-gray-200'
+        }`}>
+          <h2 className={`text-lg font-bold flex items-center transition-colors ${
+            isDarkMode ? 'text-white' : 'text-gray-800'
+          }`}>
+            <HelpCircle className="mr-2" size={20} />
+            Experiencia de uso
+          </h2>
+        </div>
+        <div className="p-6 space-y-4">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className={`font-semibold transition-colors ${
+                isDarkMode ? 'text-white' : 'text-gray-800'
+              }`}>
+                Modo simple
+              </p>
+              <p className={`text-sm transition-colors ${
+                isDarkMode ? 'text-gray-400' : 'text-gray-500'
+              }`}>
+                Oculta opciones avanzadas y deja lo esencial
+              </p>
+            </div>
+            <button 
+              onClick={toggleSimpleMode}
+              className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
+                isSimpleMode 
+                  ? 'bg-blue-600' 
+                  : isDarkMode ? 'bg-gray-700' : 'bg-gray-200'
+              }`}
+            >
+              <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition ${
+                isSimpleMode ? 'translate-x-6' : 'translate-x-1'
+              }`}></span>
+            </button>
+          </div>
+        </div>
+      </div>
+
       {/* Notificaciones */}
-      <div className={`rounded-2xl shadow-lg border transition-all duration-300 ${
+      <div className={`rounded-2xl shadow-lg border transition-all duration-300 card-surface ${
         isDarkMode
           ? 'bg-gradient-to-br from-gray-800 to-gray-700 border-gray-700'
           : 'bg-white border-gray-200'
@@ -238,6 +339,33 @@ const Settings: React.FC = () => {
               }`}></span>
             </button>
           </div>
+
+          <div className="flex items-center justify-between">
+            <div>
+              <p className={`font-semibold transition-colors ${
+                isDarkMode ? 'text-white' : 'text-gray-800'
+              }`}>
+                Notificaciones push
+              </p>
+              <p className={`text-sm transition-colors ${
+                isDarkMode ? 'text-gray-400' : 'text-gray-500'
+              }`}>
+                Alertas instantáneas en el navegador
+              </p>
+            </div>
+            <button 
+              onClick={() => toggleNotification('pushNotifications')}
+              className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
+                notifications.pushNotifications 
+                  ? 'bg-blue-600' 
+                  : isDarkMode ? 'bg-gray-700' : 'bg-gray-200'
+              }`}
+            >
+              <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition ${
+                notifications.pushNotifications ? 'translate-x-6' : 'translate-x-1'
+              }`}></span>
+            </button>
+          </div>
           
           <div className="flex items-center justify-between">
             <div>
@@ -277,7 +405,7 @@ const Settings: React.FC = () => {
               <button
                 onClick={handleSendMonthlyReport}
                 disabled={isSendingReport}
-                className={`w-full px-4 py-3 rounded-xl font-medium transition-all duration-200 flex items-center justify-center space-x-2 ${
+                className={`w-full px-4 py-3 rounded-xl font-medium transition-all duration-200 flex items-center justify-center space-x-2 btn-accent ${
                   isSendingReport
                     ? 'bg-gray-400 cursor-not-allowed'
                     : 'bg-blue-600 hover:bg-blue-700 text-white'
@@ -301,7 +429,7 @@ const Settings: React.FC = () => {
               
               <button
                 onClick={handleTestEmailAlerts}
-                className={`w-full px-4 py-3 rounded-xl font-medium transition-all duration-200 flex items-center justify-center space-x-2 ${
+                className={`w-full px-4 py-3 rounded-xl font-medium transition-all duration-200 flex items-center justify-center space-x-2 btn-accent ${
                   isDarkMode
                     ? 'bg-purple-600 hover:bg-purple-700 text-white'
                     : 'bg-purple-600 hover:bg-purple-700 text-white'
@@ -309,6 +437,18 @@ const Settings: React.FC = () => {
               >
                 <AlertTriangle size={16} />
                 <span>Probar Alertas por Email</span>
+              </button>
+
+              <button
+                onClick={handleTestPush}
+                className={`w-full px-4 py-3 rounded-xl font-medium transition-all duration-200 flex items-center justify-center space-x-2 ${
+                  isDarkMode
+                    ? 'bg-gray-700 hover:bg-gray-600 text-white'
+                    : 'bg-gray-200 hover:bg-gray-300 text-gray-800'
+                }`}
+              >
+                <Bell size={16} />
+                <span>Probar Notificación Push</span>
               </button>
             </div>
             
@@ -331,7 +471,7 @@ const Settings: React.FC = () => {
       </div>
 
       {/* Privacidad y Seguridad */}
-      <div className={`rounded-2xl shadow-lg border transition-all duration-300 ${
+      <div className={`rounded-2xl shadow-lg border transition-all duration-300 card-surface ${
         isDarkMode
           ? 'bg-gradient-to-br from-gray-800 to-gray-700 border-gray-700'
           : 'bg-white border-gray-200'
@@ -440,8 +580,57 @@ const Settings: React.FC = () => {
         </div>
       </div>
 
+      {/* Moneda y Región */}
+      <div className={`rounded-2xl shadow-lg border transition-all duration-300 card-surface ${
+        isDarkMode
+          ? 'bg-gradient-to-br from-gray-800 to-gray-700 border-gray-700'
+          : 'bg-white border-gray-200'
+      }`}>
+        <div className={`p-6 border-b transition-colors ${
+          isDarkMode ? 'border-gray-700' : 'border-gray-200'
+        }`}>
+          <h2 className={`text-lg font-bold flex items-center transition-colors ${
+            isDarkMode ? 'text-white' : 'text-gray-800'
+          }`}>
+            Moneda y Región
+          </h2>
+        </div>
+        <div className="p-6 space-y-4">
+          <div>
+            <p className={`text-sm font-semibold mb-2 transition-colors ${
+              isDarkMode ? 'text-gray-300' : 'text-gray-700'
+            }`}>
+              Moneda principal
+            </p>
+            <select
+              value={currency}
+              onChange={(e) => setCurrency(e.target.value)}
+              className={`w-full px-4 py-2.5 rounded-xl transition-all duration-200 ${
+                isDarkMode
+                  ? 'bg-gray-700/50 border border-gray-600 text-white focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20'
+                  : 'bg-gray-50 border border-gray-200 text-gray-800 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20'
+              }`}
+            >
+              <option value="USD">USD - Dólar estadounidense</option>
+              <option value="MXN">MXN - Peso mexicano</option>
+              <option value="COP">COP - Peso colombiano</option>
+              <option value="ARS">ARS - Peso argentino</option>
+              <option value="CLP">CLP - Peso chileno</option>
+              <option value="PEN">PEN - Sol peruano</option>
+              <option value="EUR">EUR - Euro</option>
+              <option value="BRL">BRL - Real brasileño</option>
+            </select>
+            <p className={`text-xs mt-2 transition-colors ${
+              isDarkMode ? 'text-gray-400' : 'text-gray-500'
+            }`}>
+              Esta moneda se usará por defecto al crear nuevas cuentas.
+            </p>
+          </div>
+        </div>
+      </div>
+
       {/* Almacenamiento */}
-      <div className={`rounded-2xl shadow-lg border transition-all duration-300 ${
+      <div className={`rounded-2xl shadow-lg border transition-all duration-300 card-surface ${
         isDarkMode
           ? 'bg-gradient-to-br from-gray-800 to-gray-700 border-gray-700'
           : 'bg-white border-gray-200'
@@ -602,7 +791,7 @@ const Settings: React.FC = () => {
       </div>
 
       {/* Ayuda */}
-      <div className={`rounded-2xl shadow-lg border transition-all duration-300 ${
+      <div className={`rounded-2xl shadow-lg border transition-all duration-300 card-surface ${
         isDarkMode
           ? 'bg-gradient-to-br from-gray-800 to-gray-700 border-gray-700'
           : 'bg-white border-gray-200'
@@ -617,9 +806,11 @@ const Settings: React.FC = () => {
             Ayuda y Soporte
           </h2>
         </div>
-        <div className="p-6">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <button className={`text-left p-4 rounded-lg transition-colors ${
+      <div className="p-6">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <button
+              onClick={() => window.dispatchEvent(new CustomEvent('app:navigate', { detail: 'help' }))}
+              className={`text-left p-4 rounded-lg transition-colors ${
               isDarkMode 
                 ? 'bg-gray-700 hover:bg-gray-600 text-white' 
                 : 'bg-gray-50 hover:bg-gray-100 text-gray-800'
@@ -632,7 +823,11 @@ const Settings: React.FC = () => {
               </p>
             </button>
             
-            <button className={`text-left p-4 rounded-lg transition-colors ${
+            <button
+              onClick={() => {
+                window.location.href = 'mailto:soporte@finanzasapp.com?subject=Soporte%20FinanzasApp';
+              }}
+              className={`text-left p-4 rounded-lg transition-colors ${
               isDarkMode 
                 ? 'bg-gray-700 hover:bg-gray-600 text-white' 
                 : 'bg-gray-50 hover:bg-gray-100 text-gray-800'

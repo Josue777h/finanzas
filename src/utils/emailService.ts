@@ -1,4 +1,6 @@
 import { Transaction, Account, Category } from '../types';
+import { httpsCallable } from 'firebase/functions';
+import { functions } from '../firebase/config';
 
 // Simulación de servicio de email - en producción esto se conectaría a un backend real
 export interface EmailData {
@@ -9,23 +11,18 @@ export interface EmailData {
 }
 
 export const sendEmail = async (emailData: EmailData): Promise<boolean> => {
-  // Simulación de envío de email
-  console.log('📧 Enviando email:', emailData);
-  
-  // En producción, aquí harías una llamada a tu backend
-  // const response = await fetch('/api/send-email', {
-  //   method: 'POST',
-  //   headers: { 'Content-Type': 'application/json' },
-  //   body: JSON.stringify(emailData)
-  // });
-  
-  // Simulamos éxito después de 1 segundo
-  return new Promise((resolve) => {
-    setTimeout(() => {
-      console.log('✅ Email enviado exitosamente');
-      resolve(true);
-    }, 1000);
-  });
+  try {
+    const callable = httpsCallable(functions, 'sendEmail');
+    await callable({
+      to: emailData.to,
+      subject: emailData.subject,
+      body: emailData.body
+    });
+    return true;
+  } catch (error) {
+    console.error('Error enviando email:', error);
+    return false;
+  }
 };
 
 export const generateMonthlyReport = (

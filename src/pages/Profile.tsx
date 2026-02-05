@@ -1,13 +1,16 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { useFinance } from '../context/FinanceContext';
 import { useTheme } from '../context/ThemeContext';
+import { useCurrency } from '../context/CurrencyContext';
+import { formatCurrency } from '../utils/formatCurrency';
 import { User, Mail, Calendar, Camera, Save } from 'lucide-react';
 
 const Profile: React.FC = () => {
-  const { user } = useAuth();
+  const { user, updateProfileName } = useAuth();
   const { transactions, accounts } = useFinance();
   const { isDarkMode, toggleDarkMode } = useTheme();
+  const { currency } = useCurrency();
   const [isEditing, setIsEditing] = useState(false);
   const [userStats, setUserStats] = useState({
     totalTransactions: 0,
@@ -29,7 +32,7 @@ const Profile: React.FC = () => {
   });
 
   // Calcular estadísticas del usuario
-  useEffect(() => {
+  const computedStats = useMemo(() => {
     if (transactions.length > 0) {
       const uniqueMonths = new Set(transactions.map(t => {
         const date = new Date(t.date);
@@ -44,25 +47,28 @@ const Profile: React.FC = () => {
         .filter(t => t.type === 'expense')
         .reduce((sum, t) => sum + t.amount, 0);
 
-      setUserStats({
+      return {
         totalTransactions: transactions.length,
         activeMonths: uniqueMonths,
         connectedAccounts: accounts.length,
         totalIncome,
         totalExpense,
         netBalance: totalIncome - totalExpense
-      });
-    } else {
-      setUserStats({
-        totalTransactions: 0,
-        activeMonths: 0,
-        connectedAccounts: accounts.length,
-        totalIncome: 0,
-        totalExpense: 0,
-        netBalance: 0
-      });
+      };
     }
+    return {
+      totalTransactions: 0,
+      activeMonths: 0,
+      connectedAccounts: accounts.length,
+      totalIncome: 0,
+      totalExpense: 0,
+      netBalance: 0
+    };
   }, [transactions, accounts]);
+
+  useEffect(() => {
+    setUserStats(computedStats);
+  }, [computedStats]);
 
   // Cargar preferencias guardadas
   useEffect(() => {
@@ -83,23 +89,12 @@ const Profile: React.FC = () => {
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    // Update user data in localStorage
-    const users = JSON.parse(localStorage.getItem('users') || '[]');
-    const userIndex = users.findIndex((u: any) => u.email === user?.email);
-    
-    if (userIndex !== -1) {
-      users[userIndex] = { ...users[userIndex], name: formData.name };
-      localStorage.setItem('users', JSON.stringify(users));
-      
-      // Update current user session
-      const updatedUser = { ...user, name: formData.name };
-      localStorage.setItem('user', JSON.stringify(updatedUser));
-      
-      // Force re-render by updating auth state
-      window.location.reload();
-    }
-    
-    setIsEditing(false);
+    updateProfileName(formData.name).then((result) => {
+      if (!result.success) {
+        alert('No se pudo actualizar el nombre');
+      }
+      setIsEditing(false);
+    });
   };
 
   const togglePreference = (key: keyof typeof preferences) => {
@@ -126,7 +121,7 @@ const Profile: React.FC = () => {
         </p>
       </div>
 
-      <div className={`rounded-2xl shadow-lg p-6 border transition-all duration-300 ${
+      <div className={`rounded-2xl shadow-lg p-6 border transition-all duration-300 card-surface ${
         isDarkMode
           ? 'bg-gradient-to-br from-gray-800 to-gray-700 border-gray-700'
           : 'bg-white border-gray-200'
@@ -242,14 +237,14 @@ const Profile: React.FC = () => {
                 >
                   Cancelar
                 </button>
-                <button
-                  type="submit"
-                  className={`px-6 py-2.5 rounded-xl font-semibold transition-all duration-200 flex items-center space-x-2 ${
-                    isDarkMode
-                      ? 'bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-500 hover:to-purple-500 text-white shadow-lg shadow-blue-500/30'
-                      : 'bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white shadow-lg shadow-blue-500/30'
-                  }`}
-                >
+              <button
+                type="submit"
+                className={`px-6 py-2.5 rounded-xl font-semibold transition-all duration-200 flex items-center space-x-2 btn-accent ${
+                  isDarkMode
+                    ? 'bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-500 hover:to-purple-500 text-white shadow-lg shadow-blue-500/30'
+                    : 'bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white shadow-lg shadow-blue-500/30'
+                }`}
+              >
                   <Save size={20} />
                   <span>Guardar cambios</span>
                 </button>
@@ -258,7 +253,7 @@ const Profile: React.FC = () => {
               <button
                 type="button"
                 onClick={() => setIsEditing(true)}
-                className={`px-6 py-2.5 rounded-xl font-semibold transition-all duration-200 ${
+                className={`px-6 py-2.5 rounded-xl font-semibold transition-all duration-200 btn-accent ${
                   isDarkMode
                     ? 'bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-500 hover:to-purple-500 text-white shadow-lg shadow-blue-500/30'
                     : 'bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white shadow-lg shadow-blue-500/30'
@@ -271,7 +266,7 @@ const Profile: React.FC = () => {
         </form>
       </div>
 
-      <div className={`rounded-2xl shadow-lg p-6 border transition-all duration-300 ${
+      <div className={`rounded-2xl shadow-lg p-6 border transition-all duration-300 card-surface ${
         isDarkMode
           ? 'bg-gradient-to-br from-gray-800 to-gray-700 border-gray-700'
           : 'bg-white border-gray-200'
@@ -326,7 +321,7 @@ const Profile: React.FC = () => {
             <div className={`text-2xl font-bold mb-2 transition-colors ${
               isDarkMode ? 'text-green-400' : 'text-green-600'
             }`}>
-              ${userStats.totalIncome.toLocaleString()}
+              {formatCurrency(userStats.totalIncome, currency)}
             </div>
             <div className={`text-sm transition-colors ${
               isDarkMode ? 'text-gray-400' : 'text-gray-600'
@@ -338,7 +333,7 @@ const Profile: React.FC = () => {
             <div className={`text-2xl font-bold mb-2 transition-colors ${
               isDarkMode ? 'text-red-400' : 'text-red-600'
             }`}>
-              ${userStats.totalExpense.toLocaleString()}
+              {formatCurrency(userStats.totalExpense, currency)}
             </div>
             <div className={`text-sm transition-colors ${
               isDarkMode ? 'text-gray-400' : 'text-gray-600'
@@ -352,7 +347,7 @@ const Profile: React.FC = () => {
                 ? (isDarkMode ? 'text-blue-400' : 'text-blue-600')
                 : (isDarkMode ? 'text-red-400' : 'text-red-600')
             }`}>
-              ${Math.abs(userStats.netBalance).toLocaleString()}
+              {formatCurrency(Math.abs(userStats.netBalance), currency)}
             </div>
             <div className={`text-sm transition-colors ${
               isDarkMode ? 'text-gray-400' : 'text-gray-600'
@@ -363,7 +358,7 @@ const Profile: React.FC = () => {
         </div>
       </div>
 
-      <div className={`rounded-2xl shadow-lg p-6 border transition-all duration-300 ${
+      <div className={`rounded-2xl shadow-lg p-6 border transition-all duration-300 card-surface ${
         isDarkMode
           ? 'bg-gradient-to-br from-gray-800 to-gray-700 border-gray-700'
           : 'bg-white border-gray-200'

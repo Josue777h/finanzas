@@ -106,8 +106,9 @@ const Help: React.FC = () => {
 
   const handleSendMessage = () => {
     if (supportMessage.trim()) {
-      // Simulación de envío de mensaje
-      console.log('Mensaje de soporte enviado:', supportMessage);
+      const subject = encodeURIComponent('Soporte FinanzasApp');
+      const body = encodeURIComponent(supportMessage.trim());
+      window.location.href = `mailto:soporte@finanzasapp.com?subject=${subject}&body=${body}`;
       setMessageSent(true);
       setSupportMessage('');
       setTimeout(() => setMessageSent(false), 3000);
@@ -130,7 +131,7 @@ const Help: React.FC = () => {
       </div>
 
       {/* Búsqueda */}
-      <div className={`rounded-2xl shadow-lg p-6 border transition-all duration-300 ${
+      <div className={`rounded-2xl shadow-lg p-6 border transition-all duration-300 card-surface ${
         isDarkMode
           ? 'bg-gradient-to-br from-gray-800 to-gray-700 border-gray-700'
           : 'bg-white border-gray-200'
@@ -154,14 +155,14 @@ const Help: React.FC = () => {
       </div>
 
       {/* Categorías de Ayuda */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6 animate-fade-up">
         {helpCategories.map((category) => {
           const Icon = category.icon;
           return (
             <button
               key={category.id}
               onClick={() => setSelectedCategory(selectedCategory === category.id ? null : category.id)}
-              className={`rounded-2xl shadow-lg p-6 border transition-all duration-300 text-left ${
+              className={`rounded-2xl shadow-lg p-6 border transition-all duration-300 text-left card-surface ${
                 isDarkMode
                   ? 'bg-gradient-to-br from-gray-800 to-gray-700 border-gray-700 hover:border-blue-600'
                   : 'bg-white border-gray-200 hover:border-blue-500'
@@ -214,7 +215,7 @@ const Help: React.FC = () => {
       </div>
 
       {/* Preguntas Frecuentes */}
-      <div className={`rounded-2xl shadow-lg p-6 border transition-all duration-300 ${
+      <div className={`rounded-2xl shadow-lg p-6 border transition-all duration-300 card-surface ${
         isDarkMode
           ? 'bg-gradient-to-br from-gray-800 to-gray-700 border-gray-700'
           : 'bg-white border-gray-200'
@@ -266,7 +267,7 @@ const Help: React.FC = () => {
       </div>
 
       {/* Contacto de Soporte */}
-      <div className={`rounded-2xl shadow-lg p-6 border transition-all duration-300 ${
+      <div className={`rounded-2xl shadow-lg p-6 border transition-all duration-300 card-surface ${
         isDarkMode
           ? 'bg-gradient-to-br from-gray-800 to-gray-700 border-gray-700'
           : 'bg-white border-gray-200'
@@ -310,7 +311,7 @@ const Help: React.FC = () => {
           </a>
           
           <a
-            href="#"
+            href="mailto:soporte@finanzasapp.com?subject=Solicitud%20de%20Videollamada"
             className={`flex items-center space-x-3 p-4 rounded-xl transition-all duration-200 ${
               isDarkMode
                 ? 'bg-gray-700/50 hover:bg-gray-700 text-white'

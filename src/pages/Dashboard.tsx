@@ -1,5 +1,7 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import { useFinance } from '../context/FinanceContext';
+import { useCurrency } from '../context/CurrencyContext';
+import { formatCurrency } from '../utils/formatCurrency';
 import { useTheme } from '../context/ThemeContext';
 import { DollarSign, TrendingUp, TrendingDown, CreditCard, ArrowUpRight, ArrowDownRight } from 'lucide-react';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
@@ -7,6 +9,7 @@ import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContai
 const Dashboard: React.FC = () => {
   const { accounts, transactions, totalBalance, monthlyIncome, monthlyExpenses, isLoadingData } = useFinance();
   const { isDarkMode } = useTheme();
+  const { currency } = useCurrency();
 
   // Mostrar indicador de carga mientras se cargan los datos
   if (isLoadingData) {
@@ -23,42 +26,51 @@ const Dashboard: React.FC = () => {
     );
   }
 
-  const recentTransactions = transactions
-    .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
-    .slice(0, 5);
+  const recentTransactions = useMemo(() => {
+    return transactions
+      .slice()
+      .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
+      .slice(0, 5);
+  }, [transactions]);
 
-  const last7Days = Array.from({ length: 7 }, (_, i) => {
-    const date = new Date();
-    date.setDate(date.getDate() - (6 - i));
-    return date.toLocaleDateString('es', { weekday: 'short' });
-  });
-
-  const chartData = last7Days.map((day, index) => {
-    const dayTransactions = transactions.filter(trx => {
-      const trxDate = new Date(trx.date);
-      const currentDate = new Date();
-      currentDate.setDate(currentDate.getDate() - (6 - index));
-      return trxDate.toDateString() === currentDate.toDateString();
+  const last7Days = useMemo(() => {
+    return Array.from({ length: 7 }, (_, i) => {
+      const date = new Date();
+      date.setDate(date.getDate() - (6 - i));
+      return date.toLocaleDateString('es', { weekday: 'short' });
     });
+  }, []);
 
-    return {
-      day,
-      income: dayTransactions.filter(trx => trx.type === 'income').reduce((sum, trx) => sum + trx.amount, 0),
-      expenses: dayTransactions.filter(trx => trx.type === 'expense').reduce((sum, trx) => sum + trx.amount, 0),
-    };
-  });
+  const chartData = useMemo(() => {
+    return last7Days.map((day, index) => {
+      const dayTransactions = transactions.filter(trx => {
+        const trxDate = new Date(trx.date);
+        const currentDate = new Date();
+        currentDate.setDate(currentDate.getDate() - (6 - index));
+        return trxDate.toDateString() === currentDate.toDateString();
+      });
 
-  const categoryData = transactions
-    .filter(trx => trx.type === 'expense')
-    .reduce((acc, trx) => {
-      const existing = acc.find(item => item.name === trx.category);
-      if (existing) {
-        existing.value += trx.amount;
-      } else {
-        acc.push({ name: trx.category, value: trx.amount });
-      }
-      return acc;
-    }, [] as { name: string; value: number }[]);
+      return {
+        day,
+        income: dayTransactions.filter(trx => trx.type === 'income').reduce((sum, trx) => sum + trx.amount, 0),
+        expenses: dayTransactions.filter(trx => trx.type === 'expense').reduce((sum, trx) => sum + trx.amount, 0),
+      };
+    });
+  }, [last7Days, transactions]);
+
+  const categoryData = useMemo(() => {
+    return transactions
+      .filter(trx => trx.type === 'expense')
+      .reduce((acc, trx) => {
+        const existing = acc.find(item => item.name === trx.category);
+        if (existing) {
+          existing.value += trx.amount;
+        } else {
+          acc.push({ name: trx.category, value: trx.amount });
+        }
+        return acc;
+      }, [] as { name: string; value: number }[]);
+  }, [transactions]);
 
   const COLORS = ['#3b82f6', '#ef4444', '#f59e0b', '#10b981', '#8b5cf6', '#ec4899'];
 
@@ -75,8 +87,8 @@ const Dashboard: React.FC = () => {
         </p>
       </div>
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 md:gap-6">
-        <div className={`rounded-2xl shadow-lg p-6 border transition-all duration-300 hover:scale-105 ${
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 md:gap-6 animate-fade-up">
+        <div className={`rounded-2xl shadow-lg p-6 border transition-all duration-300 hover:scale-105 card-surface ${
           isDarkMode
             ? 'bg-gradient-to-br from-gray-800 to-gray-700 border-gray-700'
             : 'bg-white border-gray-200'
@@ -91,7 +103,7 @@ const Dashboard: React.FC = () => {
               <p className={`text-2xl font-bold transition-colors ${
                 isDarkMode ? 'text-white' : 'text-gray-800'
               }`}>
-                ${totalBalance.toLocaleString('es-MX', { minimumFractionDigits: 2 })}
+                {formatCurrency(totalBalance, currency)}
               </p>
             </div>
             <div className={`p-3 rounded-xl ${
@@ -102,7 +114,7 @@ const Dashboard: React.FC = () => {
           </div>
         </div>
 
-        <div className={`rounded-2xl shadow-lg p-6 border transition-all duration-300 hover:scale-105 ${
+        <div className={`rounded-2xl shadow-lg p-6 border transition-all duration-300 hover:scale-105 card-surface ${
           isDarkMode
             ? 'bg-gradient-to-br from-gray-800 to-gray-700 border-gray-700'
             : 'bg-white border-gray-200'
@@ -115,7 +127,7 @@ const Dashboard: React.FC = () => {
                 Ingresos del Mes
               </p>
               <p className="text-2xl font-bold text-green-500 dark:text-green-400">
-                ${monthlyIncome.toLocaleString('es-MX', { minimumFractionDigits: 2 })}
+                {formatCurrency(monthlyIncome, currency)}
               </p>
             </div>
             <div className={`p-3 rounded-xl ${
@@ -126,7 +138,7 @@ const Dashboard: React.FC = () => {
           </div>
         </div>
 
-        <div className={`rounded-2xl shadow-lg p-6 border transition-all duration-300 hover:scale-105 ${
+        <div className={`rounded-2xl shadow-lg p-6 border transition-all duration-300 hover:scale-105 card-surface ${
           isDarkMode
             ? 'bg-gradient-to-br from-gray-800 to-gray-700 border-gray-700'
             : 'bg-white border-gray-200'
@@ -139,7 +151,7 @@ const Dashboard: React.FC = () => {
                 Gastos del Mes
               </p>
               <p className="text-2xl font-bold text-red-500 dark:text-red-400">
-                ${monthlyExpenses.toLocaleString('es-MX', { minimumFractionDigits: 2 })}
+                {formatCurrency(monthlyExpenses, currency)}
               </p>
             </div>
             <div className={`p-3 rounded-xl ${
@@ -150,7 +162,7 @@ const Dashboard: React.FC = () => {
           </div>
         </div>
 
-        <div className={`rounded-2xl shadow-lg p-6 border transition-all duration-300 hover:scale-105 ${
+        <div className={`rounded-2xl shadow-lg p-6 border transition-all duration-300 hover:scale-105 card-surface ${
           isDarkMode
             ? 'bg-gradient-to-br from-gray-800 to-gray-700 border-gray-700'
             : 'bg-white border-gray-200'
@@ -177,8 +189,8 @@ const Dashboard: React.FC = () => {
         </div>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 md:gap-6">
-        <div className={`rounded-2xl shadow-lg p-6 border transition-all duration-300 ${
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 md:gap-6 animate-fade-up">
+        <div className={`rounded-2xl shadow-lg p-6 border transition-all duration-300 card-surface ${
           isDarkMode
             ? 'bg-gradient-to-br from-gray-800 to-gray-700 border-gray-700'
             : 'bg-white border-gray-200'
@@ -231,7 +243,7 @@ const Dashboard: React.FC = () => {
         </div>
 
         {categoryData.length > 0 && (
-          <div className={`rounded-2xl shadow-lg p-6 border transition-all duration-300 ${
+          <div className={`rounded-2xl shadow-lg p-6 border transition-all duration-300 card-surface ${
             isDarkMode
               ? 'bg-gradient-to-br from-gray-800 to-gray-700 border-gray-700'
               : 'bg-white border-gray-200'
@@ -272,7 +284,7 @@ const Dashboard: React.FC = () => {
         )}
       </div>
 
-      <div className={`rounded-2xl shadow-lg p-6 border transition-all duration-300 ${
+      <div className={`rounded-2xl shadow-lg p-6 border transition-all duration-300 card-surface ${
         isDarkMode
           ? 'bg-gradient-to-br from-gray-800 to-gray-700 border-gray-700'
           : 'bg-white border-gray-200'
@@ -326,7 +338,7 @@ const Dashboard: React.FC = () => {
                         ? isDarkMode ? 'text-green-400' : 'text-green-600'
                         : isDarkMode ? 'text-red-400' : 'text-red-600'
                     }`}>
-                      {transaction.type === 'income' ? '+' : '-'}${transaction.amount.toLocaleString('es-MX', { minimumFractionDigits: 2 })}
+                      {transaction.type === 'income' ? '+' : '-'}{formatCurrency(transaction.amount, currency)}
                     </p>
                     <p className={`text-sm transition-colors ${
                       isDarkMode ? 'text-gray-400' : 'text-gray-500'

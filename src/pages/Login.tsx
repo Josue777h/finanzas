@@ -80,18 +80,14 @@ const Login: React.FC = () => {
   };
 
   return (
-    <div className={`min-h-screen transition-colors duration-300 ${
-      isDarkMode 
-        ? 'bg-gradient-to-br from-gray-900 via-gray-800 to-gray-900' 
-        : 'bg-gradient-to-br from-blue-50 via-indigo-50 to-purple-50'
-    } flex items-center justify-center p-4 relative overflow-hidden`}>
+    <div className="min-h-screen transition-colors duration-300 app-bg flex items-center justify-center p-4 relative overflow-hidden">
       {/* Elementos decorativos de fondo */}
       <div className="absolute inset-0 overflow-hidden pointer-events-none">
-        <div className={`absolute -top-40 -right-40 w-80 h-80 rounded-full blur-3xl opacity-20 ${
-          isDarkMode ? 'bg-blue-500' : 'bg-blue-400'
+        <div className={`absolute -top-40 -right-40 w-80 h-80 rounded-full blur-3xl opacity-20 animate-float-slow ${
+          isDarkMode ? 'bg-teal-500' : 'bg-teal-400'
         }`}></div>
-        <div className={`absolute -bottom-40 -left-40 w-80 h-80 rounded-full blur-3xl opacity-20 ${
-          isDarkMode ? 'bg-purple-500' : 'bg-purple-400'
+        <div className={`absolute -bottom-40 -left-40 w-80 h-80 rounded-full blur-3xl opacity-20 animate-float-slow ${
+          isDarkMode ? 'bg-amber-500' : 'bg-amber-400'
         }`}></div>
       </div>
 
@@ -108,17 +104,17 @@ const Login: React.FC = () => {
         {isDarkMode ? <Sun size={20} /> : <Moon size={20} />}
       </button>
 
-      <div className={`relative z-10 w-full max-w-md ${
+      <div className={`relative z-10 w-full max-w-md card-surface ${
         isDarkMode 
-          ? 'bg-gray-800/90 backdrop-blur-xl border border-gray-700' 
-          : 'bg-white/90 backdrop-blur-xl border border-white/20'
-      } rounded-3xl shadow-2xl p-8 md:p-10 transition-all duration-300`}>
+          ? 'backdrop-blur-xl border' 
+          : 'backdrop-blur-xl border'
+      } rounded-3xl shadow-2xl p-8 md:p-10 transition-all duration-300 animate-fade-up`}>
         <div className="text-center mb-8">
           <div className="flex justify-center mb-4">
             <div className={`p-4 rounded-2xl ${
               isDarkMode 
-                ? 'bg-gradient-to-br from-blue-600 to-purple-600' 
-                : 'bg-gradient-to-br from-blue-500 to-indigo-600'
+                ? 'bg-gradient-to-br from-teal-600 to-cyan-600' 
+                : 'bg-gradient-to-br from-teal-500 to-cyan-500'
             }`}>
               <Wallet className="text-white" size={32} />
             </div>
@@ -230,8 +226,8 @@ const Login: React.FC = () => {
             disabled={isLoading}
             className={`w-full py-3.5 rounded-xl font-semibold text-white transition-all duration-200 ${
               isDarkMode
-                ? 'bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-500 hover:to-purple-500 shadow-lg shadow-blue-500/30'
-                : 'bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 shadow-lg shadow-blue-500/30'
+                ? 'bg-gradient-to-r from-teal-600 to-emerald-500 hover:from-teal-500 hover:to-emerald-400 shadow-lg shadow-teal-500/30'
+                : 'bg-gradient-to-r from-teal-600 to-emerald-500 hover:from-teal-500 hover:to-emerald-400 shadow-lg shadow-teal-500/30'
             } disabled:opacity-50 disabled:cursor-not-allowed disabled:shadow-none transform hover:scale-[1.02] active:scale-[0.98]`}
           >
             {isLoading ? (

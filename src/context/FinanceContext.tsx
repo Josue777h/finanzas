@@ -3,15 +3,16 @@ import { Account, Transaction, Category, FinanceState } from '../types';
 import { useAuth } from './AuthContext';
 import { 
   saveAccount, 
-  loadAccounts, 
   deleteAccountFirebase,
+  deleteTransactionsByAccount,
   saveTransaction,
-  loadTransactions,
   deleteTransactionFirebase,
   saveCategories,
-  loadCategories,
-  checkFirebaseConnection
+  subscribeAccounts,
+  subscribeTransactions,
+  subscribeCategories
 } from '../firebase/config';
+import { trackEvent } from '../utils/analytics';
 
 interface FinanceContextType extends FinanceState {
   addAccount: (account: Omit<Account, 'id' | 'createdAt'>) => void;
@@ -122,177 +123,90 @@ export const FinanceProvider: React.FC<{ children: ReactNode }> = ({ children })
 
   // Cargar datos desde Firebase cuando el usuario cambia o se autentica
   useEffect(() => {
-    const loadData = async () => {
-      if (user?.id && isAuthenticated) {
-        console.log('Cargando datos desde Firebase para usuario:', user.id);
-        
-        // Iniciar estado de carga
-        dispatch({ type: 'SET_LOADING_DATA', payload: true });
-        
-        try {
-          // Primero verificar conexión a Firebase
-          const isConnected = await checkFirebaseConnection();
-          if (!isConnected) {
-            throw new Error('No se puede conectar a Firebase');
-          }
-          
-          // Primero intentar cargar desde caché local para respuesta inmediata
-          const cachedAccounts = JSON.parse(localStorage.getItem(`accounts_${user.id}`) || '[]');
-          const cachedTransactions = JSON.parse(localStorage.getItem(`transactions_${user.id}`) || '[]');
-          const cachedCategories = JSON.parse(localStorage.getItem(`categories_${user.id}`) || '[]');
-          
-          // Si hay datos en caché, mostrarlos inmediatamente y actualizar en segundo plano
-          if (cachedAccounts.length > 0 || cachedTransactions.length > 0) {
-            console.log('Cargando datos desde caché local (respuesta inmediata)');
-            dispatch({ type: 'SET_ACCOUNTS', payload: cachedAccounts as Account[] });
-            dispatch({ type: 'SET_TRANSACTIONS', payload: cachedTransactions as Transaction[] });
-            dispatch({ type: 'SET_CATEGORIES', payload: cachedCategories.length > 0 ? cachedCategories as Category[] : initialState.categories });
-            dispatch({ type: 'SET_LOADING_DATA', payload: false });
-            
-            // Actualizar datos en segundo plano sin bloquear la UI
-            setTimeout(() => updateDataInBackground(), 100);
-            return;
-          }
-          
-          // Si no hay caché, cargar desde Firebase en paralelo con retry
-          console.log('Sin caché, cargando desde Firebase...');
-          
-          let retryCount = 0;
-          const maxRetries = 3;
-          let accountsResult: any, transactionsResult: any, categoriesResult: any;
-          
-          const attemptLoad = async (currentRetryCount: number) => {
-            try {
-              [accountsResult, transactionsResult, categoriesResult] = await Promise.all([
-                loadAccounts(user.id),
-                loadTransactions(user.id),
-                loadCategories(user.id)
-              ]);
-              return true; // Éxito
-            } catch (error) {
-              return false; // Fallo
-            }
-          };
-          
-          while (retryCount < maxRetries) {
-            const success = await attemptLoad(retryCount);
-            if (success) {
-              break;
-            }
-            
-            retryCount++;
-            console.log(`Intento ${retryCount} fallido, reintentando...`);
-            
-            if (retryCount >= maxRetries) {
-              throw new Error('No se pudieron cargar los datos después de varios intentos');
-            }
-            
-            // Esperar antes de reintentar (exponential backoff)
-            await new Promise(resolve => setTimeout(resolve, 1000 * retryCount));
-          }
-          
-          // Procesar todos los datos de forma optimizada
-          const accounts: Account[] = accountsResult?.success ? (accountsResult.data as Account[]) : [];
-          const transactions: Transaction[] = transactionsResult?.success ? (transactionsResult.data as Transaction[]) : [];
-          const categories: Category[] = categoriesResult?.success && categoriesResult.data.length > 0 
-            ? (categoriesResult.data as Category[]) 
-            : initialState.categories;
-          
-          console.log('Datos cargados desde Firebase:', { 
-            accounts: accounts.length, 
-            transactions: transactions.length, 
-            categories: categories.length 
-          });
-          
-          // Actualizar estado con todos los datos
-          dispatch({ type: 'SET_ACCOUNTS', payload: accounts });
-          dispatch({ type: 'SET_TRANSACTIONS', payload: transactions });
-          dispatch({ type: 'SET_CATEGORIES', payload: categories });
-          
-          // Guardar en caché local para futuras cargas rápidas
-          localStorage.setItem(`accounts_${user.id}`, JSON.stringify(accounts));
-          localStorage.setItem(`transactions_${user.id}`, JSON.stringify(transactions));
-          localStorage.setItem(`categories_${user.id}`, JSON.stringify(categories));
-          
-        } catch (error: any) {
-          console.error('Error cargando datos desde Firebase:', error.message);
-          
-          // Intentar cargar desde caché local primero
-          try {
-            const cachedAccounts = JSON.parse(localStorage.getItem(`accounts_${user.id}`) || '[]');
-            const cachedTransactions = JSON.parse(localStorage.getItem(`transactions_${user.id}`) || '[]');
-            const cachedCategories = JSON.parse(localStorage.getItem(`categories_${user.id}`) || '[]');
-            
-            if (cachedAccounts.length > 0 || cachedTransactions.length > 0) {
-              console.log('Cargando datos desde caché local como respaldo');
-              dispatch({ type: 'SET_ACCOUNTS', payload: cachedAccounts as Account[] });
-              dispatch({ type: 'SET_TRANSACTIONS', payload: cachedTransactions as Transaction[] });
-              dispatch({ type: 'SET_CATEGORIES', payload: cachedCategories.length > 0 ? cachedCategories as Category[] : initialState.categories });
-            } else {
-              // Usar datos vacíos si no hay caché
-              dispatch({ type: 'SET_ACCOUNTS', payload: [] });
-              dispatch({ type: 'SET_TRANSACTIONS', payload: [] });
-              dispatch({ type: 'SET_CATEGORIES', payload: initialState.categories });
-            }
-          } catch (cacheError) {
-            console.error('Error cargando desde caché:', cacheError);
-            dispatch({ type: 'SET_ACCOUNTS', payload: [] });
-            dispatch({ type: 'SET_TRANSACTIONS', payload: [] });
-            dispatch({ type: 'SET_CATEGORIES', payload: initialState.categories });
-          }
-        } finally {
-          // Finalizar estado de carga
+    if (user?.id && isAuthenticated) {
+      console.log('Suscribiendo datos en tiempo real para usuario:', user.id);
+
+      // Mostrar caché local inmediatamente
+      const cachedAccounts = JSON.parse(localStorage.getItem(`accounts_${user.id}`) || '[]');
+      const cachedTransactions = JSON.parse(localStorage.getItem(`transactions_${user.id}`) || '[]');
+      const cachedCategories = JSON.parse(localStorage.getItem(`categories_${user.id}`) || '[]');
+
+      if (cachedAccounts.length > 0 || cachedTransactions.length > 0) {
+        dispatch({ type: 'SET_ACCOUNTS', payload: cachedAccounts as Account[] });
+        dispatch({ type: 'SET_TRANSACTIONS', payload: cachedTransactions as Transaction[] });
+        dispatch({ type: 'SET_CATEGORIES', payload: cachedCategories.length > 0 ? cachedCategories as Category[] : initialState.categories });
+      }
+
+      let hasLoadedAccounts = false;
+      let hasLoadedTransactions = false;
+      let hasLoadedCategories = false;
+
+      const maybeStopLoading = () => {
+        if (hasLoadedAccounts && hasLoadedTransactions && hasLoadedCategories) {
           dispatch({ type: 'SET_LOADING_DATA', payload: false });
         }
-      } else if (!isAuthenticated) {
-        // Limpiar datos cuando el usuario cierra sesión
-        console.log('Limpiando datos - usuario no autenticado');
-        dispatch({ type: 'SET_LOADING_DATA', payload: false });
-        dispatch({ type: 'SET_ACCOUNTS', payload: [] });
-        dispatch({ type: 'SET_TRANSACTIONS', payload: [] });
-        dispatch({ type: 'SET_CATEGORIES', payload: initialState.categories });
-      }
-    };
-    
-    // Función para actualizar datos en segundo plano
-    const updateDataInBackground = async () => {
-      if (!user?.id) return;
-      
-      try {
-        console.log('Actualizando datos en segundo plano...');
-        const [accountsResult, transactionsResult, categoriesResult] = await Promise.all([
-          loadAccounts(user.id),
-          loadTransactions(user.id),
-          loadCategories(user.id)
-        ]);
-        
-        // Actualizar solo si hay cambios
-        const accounts: Account[] = accountsResult.success ? (accountsResult.data as Account[]) : [];
-        const transactions: Transaction[] = transactionsResult.success ? (transactionsResult.data as Transaction[]) : [];
-        const categories: Category[] = categoriesResult.success && categoriesResult.data.length > 0 
-          ? (categoriesResult.data as Category[]) 
-          : initialState.categories;
-        
-        // Actualizar caché y estado
-        localStorage.setItem(`accounts_${user.id}`, JSON.stringify(accounts));
-        localStorage.setItem(`transactions_${user.id}`, JSON.stringify(transactions));
-        localStorage.setItem(`categories_${user.id}`, JSON.stringify(categories));
-        
-        dispatch({ type: 'SET_ACCOUNTS', payload: accounts });
-        dispatch({ type: 'SET_TRANSACTIONS', payload: transactions });
-        dispatch({ type: 'SET_CATEGORIES', payload: categories });
-        
-        console.log('Datos actualizados en segundo plano:', { 
-          accounts: accounts.length, 
-          transactions: transactions.length, 
-          categories: categories.length 
-        });
-      } catch (error) {
-        console.error('Error actualizando datos en segundo plano:', error);
-      }
-    };
-    
-    loadData();
+      };
+
+      const unsubscribeAccounts = subscribeAccounts(
+        user.id,
+        (accounts) => {
+          hasLoadedAccounts = true;
+          dispatch({ type: 'SET_ACCOUNTS', payload: accounts });
+          localStorage.setItem(`accounts_${user.id}`, JSON.stringify(accounts));
+          maybeStopLoading();
+        },
+        () => {
+          hasLoadedAccounts = true;
+          maybeStopLoading();
+        }
+      );
+
+      const unsubscribeTransactions = subscribeTransactions(
+        user.id,
+        (transactions) => {
+          hasLoadedTransactions = true;
+          dispatch({ type: 'SET_TRANSACTIONS', payload: transactions });
+          localStorage.setItem(`transactions_${user.id}`, JSON.stringify(transactions));
+          maybeStopLoading();
+        },
+        () => {
+          hasLoadedTransactions = true;
+          maybeStopLoading();
+        }
+      );
+
+      const unsubscribeCategories = subscribeCategories(
+        user.id,
+        (categories) => {
+          hasLoadedCategories = true;
+          const finalCategories = categories.length > 0 ? categories : initialState.categories;
+          dispatch({ type: 'SET_CATEGORIES', payload: finalCategories });
+          localStorage.setItem(`categories_${user.id}`, JSON.stringify(finalCategories));
+          maybeStopLoading();
+        },
+        () => {
+          hasLoadedCategories = true;
+          maybeStopLoading();
+        }
+      );
+
+      // No bloquear la UI: apagamos el loader de inmediato
+      dispatch({ type: 'SET_LOADING_DATA', payload: false });
+
+      return () => {
+        unsubscribeAccounts();
+        unsubscribeTransactions();
+        unsubscribeCategories();
+      };
+    }
+
+    if (!isAuthenticated) {
+      console.log('Limpiando datos - usuario no autenticado');
+      dispatch({ type: 'SET_LOADING_DATA', payload: false });
+      dispatch({ type: 'SET_ACCOUNTS', payload: [] });
+      dispatch({ type: 'SET_TRANSACTIONS', payload: [] });
+      dispatch({ type: 'SET_CATEGORIES', payload: initialState.categories });
+    }
   }, [user?.id, isAuthenticated]);
 
   // Guardar categorías cuando cambian (las cuentas y transacciones se guardan individualmente)
@@ -326,6 +240,7 @@ export const FinanceProvider: React.FC<{ children: ReactNode }> = ({ children })
     
     // Agregar al estado inmediatamente para respuesta rápida
     dispatch({ type: 'ADD_ACCOUNT', payload: newAccount });
+    trackEvent('account_created', { userId: user.id, accountType: account.type });
     
     // Actualizar caché local inmediatamente
     const updatedAccounts = [...state.accounts, newAccount];
@@ -357,6 +272,7 @@ export const FinanceProvider: React.FC<{ children: ReactNode }> = ({ children })
   const updateAccount = (id: string, account: Partial<Account>) => {
     // Actualizar en el estado inmediatamente
     dispatch({ type: 'UPDATE_ACCOUNT', payload: { id, account } });
+    trackEvent('account_updated', { accountId: id });
     
     // Actualizar caché local inmediatamente
     const updatedAccounts = state.accounts.map(acc => 
@@ -381,16 +297,39 @@ export const FinanceProvider: React.FC<{ children: ReactNode }> = ({ children })
   };
 
   const deleteAccount = (id: string) => {
+    const account = state.accounts.find(acc => acc.id === id);
+
     // Eliminar del estado inmediatamente
     dispatch({ type: 'DELETE_ACCOUNT', payload: id });
+    trackEvent('account_deleted', { accountId: id, accountType: account?.type });
+
+    // Eliminar transacciones asociadas del estado inmediatamente
+    const remainingTransactions = state.transactions.filter(trx => trx.accountId !== id);
+    dispatch({ type: 'SET_TRANSACTIONS', payload: remainingTransactions });
     
     // Eliminar de Firebase en segundo plano
-    if (id.startsWith('firebase_') && user?.id) {
-      deleteAccountFirebase(id, user.id).then(() => {
-        console.log('Cuenta eliminada de Firebase');
+    if (user?.id) {
+      if (id.startsWith('firebase_')) {
+        deleteAccountFirebase(id, user.id).then(() => {
+          console.log('Cuenta eliminada de Firebase');
+        }).catch((error) => {
+          console.error('Error eliminando cuenta de Firebase:', error);
+        });
+      }
+
+      // Eliminar transacciones de la cuenta en Firebase
+      deleteTransactionsByAccount(user.id, id).then(() => {
+        console.log('Transacciones de cuenta eliminadas de Firebase');
       }).catch((error) => {
-        console.error('Error eliminando cuenta de Firebase:', error);
+        console.error('Error eliminando transacciones de cuenta:', error);
       });
+    }
+
+    // Actualizar caché local
+    if (user?.id) {
+      const updatedAccounts = state.accounts.filter(acc => acc.id !== id);
+      localStorage.setItem(`accounts_${user.id}`, JSON.stringify(updatedAccounts));
+      localStorage.setItem(`transactions_${user.id}`, JSON.stringify(remainingTransactions));
     }
   };
 
@@ -435,6 +374,7 @@ export const FinanceProvider: React.FC<{ children: ReactNode }> = ({ children })
     
     // Agregar al estado inmediatamente
     dispatch({ type: 'ADD_TRANSACTION', payload: newTransaction });
+    trackEvent('transaction_created', { userId: user.id, type: transaction.type, category: transaction.category });
     
     // Actualizar caché local inmediatamente
     const updatedTransactions = [...state.transactions, newTransaction];
@@ -466,6 +406,7 @@ export const FinanceProvider: React.FC<{ children: ReactNode }> = ({ children })
   const updateTransaction = (id: string, transaction: Partial<Transaction>) => {
     // Actualizar en el estado inmediatamente
     dispatch({ type: 'UPDATE_TRANSACTION', payload: { id, transaction } });
+    trackEvent('transaction_updated', { transactionId: id });
     
     // Actualizar caché local inmediatamente
     const updatedTransactions = state.transactions.map(trx => 
@@ -523,6 +464,7 @@ export const FinanceProvider: React.FC<{ children: ReactNode }> = ({ children })
     
     // Eliminar del estado inmediatamente
     dispatch({ type: 'DELETE_TRANSACTION', payload: id });
+    trackEvent('transaction_deleted', { transactionId: id, type: transaction?.type });
     
     // Actualizar caché local inmediatamente
     const updatedTransactions = state.transactions.filter(trx => trx.id !== id);

@@ -3,7 +3,8 @@ import {
   getAuth, 
   createUserWithEmailAndPassword, 
   signInWithEmailAndPassword, 
-  signOut as firebaseSignOut
+  signOut as firebaseSignOut,
+  deleteUser
 } from 'firebase/auth';
 import { 
   getFirestore, 
@@ -17,8 +18,12 @@ import {
   getDocs,
   query,
   where,
-  Timestamp
+  Timestamp,
+  writeBatch,
+  onSnapshot
 } from 'firebase/firestore';
+import { enableIndexedDbPersistence } from 'firebase/firestore';
+import { getFunctions } from 'firebase/functions';
 
 // Tu configuración de Firebase - Reemplaza con tus credenciales
 const firebaseConfig = {
@@ -33,9 +38,16 @@ const firebaseConfig = {
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const db = getFirestore(app);
+const functions = getFunctions(app);
+
+// Persistencia local para carga más rápida
+enableIndexedDbPersistence(db).catch((err) => {
+  // Si hay múltiples pestañas abiertas o el navegador no soporta, seguimos sin bloquear
+  console.warn('Persistencia Firestore no disponible:', err.code);
+});
 
 // Exportar servicios
-export { auth, db };
+export { app, auth, db, functions };
 
 // Funciones de autenticación
 export const signIn = async (email: string, password: string) => {
@@ -85,6 +97,18 @@ export const signOut = async () => {
   }
 };
 
+export const deleteCurrentUser = async () => {
+  try {
+    if (!auth.currentUser) {
+      return { success: false, error: 'No hay usuario autenticado' };
+    }
+    await deleteUser(auth.currentUser);
+    return { success: true };
+  } catch (error: any) {
+    return { success: false, error: error.message, errorCode: error.code };
+  }
+};
+
 // Funciones de base de datos
 export const getUserData = async (uid: string) => {
   try {
@@ -94,6 +118,16 @@ export const getUserData = async (uid: string) => {
       return { success: true, data: docSnap.data() };
     }
     return { success: false, error: 'Usuario no encontrado' };
+  } catch (error: any) {
+    return { success: false, error: error.message };
+  }
+};
+
+export const updateUserData = async (uid: string, data: any) => {
+  try {
+    const docRef = doc(db, 'users', uid);
+    await setDoc(docRef, data, { merge: true });
+    return { success: true };
   } catch (error: any) {
     return { success: false, error: error.message };
   }
@@ -189,6 +223,38 @@ export const deleteAccountFirebase = async (accountId: string, userId: string) =
   }
 };
 
+export const deleteTransactionsByAccount = async (userId: string, accountId: string) => {
+  try {
+    const q = query(
+      collection(db, 'transactions'),
+      where('userId', '==', userId),
+      where('accountId', '==', accountId)
+    );
+    const snap = await getDocs(q);
+    const batch = writeBatch(db);
+    snap.forEach((docSnap) => {
+      batch.delete(doc(db, 'transactions', docSnap.id));
+    });
+    await batch.commit();
+    clearCache(userId);
+    return { success: true };
+  } catch (error: any) {
+    console.error('Error eliminando transacciones por cuenta:', error);
+    return { success: false, error: error.message };
+  }
+};
+
+export const savePushToken = async (userId: string, token: string) => {
+  try {
+    const tokenRef = doc(db, 'userTokens', userId, 'tokens', token);
+    await setDoc(tokenRef, { createdAt: Timestamp.now() });
+    return { success: true };
+  } catch (error: any) {
+    console.error('Error guardando token push:', error);
+    return { success: false, error: error.message };
+  }
+};
+
 // Funciones para transacciones
 export const saveTransaction = async (transaction: any) => {
   try {
@@ -279,6 +345,40 @@ export const deleteTransactionFirebase = async (transactionId: string, userId: s
   }
 };
 
+export const deleteAllUserData = async (userId: string) => {
+  try {
+    const batch = writeBatch(db);
+
+    const accountsQuery = query(collection(db, 'accounts'), where('userId', '==', userId));
+    const transactionsQuery = query(collection(db, 'transactions'), where('userId', '==', userId));
+
+    const [accountsSnap, transactionsSnap] = await Promise.all([
+      getDocs(accountsQuery),
+      getDocs(transactionsQuery),
+    ]);
+
+    accountsSnap.forEach((docSnap) => {
+      batch.delete(doc(db, 'accounts', docSnap.id));
+    });
+    transactionsSnap.forEach((docSnap) => {
+      batch.delete(doc(db, 'transactions', docSnap.id));
+    });
+
+    // Categorías por usuario
+    batch.delete(doc(db, 'userCategories', userId));
+    // Perfil de usuario
+    batch.delete(doc(db, 'users', userId));
+
+    await batch.commit();
+    clearCache(userId);
+
+    return { success: true };
+  } catch (error: any) {
+    console.error('Error eliminando datos del usuario:', error);
+    return { success: false, error: error.message };
+  }
+};
+
 // Función para verificar conexión a Firebase
 export const checkFirebaseConnection = async () => {
   try {
@@ -350,4 +450,76 @@ export const loadCategories = async (userId: string) => {
     console.error('❌ Error cargando categorías:', error.message);
     return { success: false, error: error.message, data: [] };
   }
+};
+
+// Suscripciones en tiempo real
+export const subscribeAccounts = (
+  userId: string,
+  onData: (accounts: any[]) => void,
+  onError?: (error: any) => void
+) => {
+  const q = query(collection(db, 'accounts'), where('userId', '==', userId));
+  return onSnapshot(
+    q,
+    (snapshot) => {
+      const accounts = snapshot.docs.map((docSnap: any) => {
+        const data = docSnap.data();
+        return {
+          ...data,
+          id: `firebase_${docSnap.id}`,
+          createdAt: data.createdAt?.toDate() || new Date(),
+        };
+      });
+      onData(accounts);
+    },
+    (error) => {
+      console.error('Error suscripción cuentas:', error);
+      if (onError) onError(error);
+    }
+  );
+};
+
+export const subscribeTransactions = (
+  userId: string,
+  onData: (transactions: any[]) => void,
+  onError?: (error: any) => void
+) => {
+  const q = query(collection(db, 'transactions'), where('userId', '==', userId));
+  return onSnapshot(
+    q,
+    (snapshot) => {
+      const transactions = snapshot.docs.map((docSnap: any) => {
+        const data = docSnap.data();
+        return {
+          ...data,
+          id: `firebase_${docSnap.id}`,
+          date: data.date?.toDate() || new Date(),
+        };
+      });
+      onData(transactions);
+    },
+    (error) => {
+      console.error('Error suscripción transacciones:', error);
+      if (onError) onError(error);
+    }
+  );
+};
+
+export const subscribeCategories = (
+  userId: string,
+  onData: (categories: any[]) => void,
+  onError?: (error: any) => void
+) => {
+  const docRef = doc(db, 'userCategories', userId);
+  return onSnapshot(
+    docRef,
+    (docSnap: any) => {
+      const categories = docSnap.exists() ? docSnap.data().categories || [] : [];
+      onData(categories);
+    },
+    (error) => {
+      console.error('Error suscripción categorías:', error);
+      if (onError) onError(error);
+    }
+  );
 };
