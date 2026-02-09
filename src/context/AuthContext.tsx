@@ -111,7 +111,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         try {
           if (!localStorage.getItem('preferredCurrency')) {
             const apiBase = process.env.REACT_APP_API_BASE || '';
-            const response = await fetch(`${apiBase}/api/geo-currency`);
+            const response = await fetch(`${apiBase}/.netlify/functions/geo-currency`);
             const result: any = await response.json();
             const currency = result?.currency || 'USD';
             const country = result?.country || '';

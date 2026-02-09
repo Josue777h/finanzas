@@ -192,7 +192,7 @@ const Settings: React.FC = () => {
         return;
       }
       const apiBase = process.env.REACT_APP_API_BASE || '';
-      const response = await fetch(`${apiBase}/api/send-push`, {
+      const response = await fetch(`${apiBase}/.netlify/functions/send-push`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

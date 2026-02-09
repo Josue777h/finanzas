@@ -14,7 +14,7 @@ export const sendEmail = async (emailData: EmailData): Promise<boolean> => {
     const token = await auth.currentUser?.getIdToken();
     if (!token) return false;
     const apiBase = process.env.REACT_APP_API_BASE || '';
-    const response = await fetch(`${apiBase}/api/send-email`, {
+    const response = await fetch(`${apiBase}/.netlify/functions/send-email`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
