@@ -9,8 +9,7 @@ import { clearCache, deleteAllUserData, deleteCurrentUser, updateUserData } from
 import { sendMonthlyReport, generateAndDownloadMonthlyReport } from '../utils/monthlyReportService';
 import { checkAndSendAlerts } from '../utils/emailService';
 import { requestPushPermission } from '../utils/pushService';
-import { httpsCallable } from 'firebase/functions';
-import { functions } from '../firebase/config';
+import { auth } from '../firebase/config';
 import { useCurrency } from '../context/CurrencyContext';
 
 const Settings: React.FC = () => {
@@ -96,10 +95,12 @@ const Settings: React.FC = () => {
         setTimeout(() => setLastReportStatus('idle'), 3000);
       } else {
         setLastReportStatus('error');
+        alert('No se pudo enviar el reporte. Verifica configuración de SendGrid y Functions.');
         setTimeout(() => setLastReportStatus('idle'), 3000);
       }
     } catch (error) {
       setLastReportStatus('error');
+      alert('No se pudo enviar el reporte. Verifica configuración de SendGrid y Functions.');
       setTimeout(() => setLastReportStatus('idle'), 3000);
     } finally {
       setIsSendingReport(false);
@@ -120,7 +121,7 @@ const Settings: React.FC = () => {
       await checkAndSendAlerts(transactions, accounts, user.email, notifications);
       alert('✅ Sistema de alertas verificado. Revisa tu email para ver las alertas generadas.');
     } catch (error) {
-      alert('❌ Error al verificar sistema de alertas.');
+      alert('❌ Error al verificar alertas. Verifica configuración de SendGrid y Functions.');
     }
   };
 
@@ -185,15 +186,30 @@ const Settings: React.FC = () => {
   const handleTestPush = async () => {
     if (!user?.id) return;
     try {
-      const callable = httpsCallable(functions, 'sendPushToUser');
-      await callable({
-        userId: user.id,
-        title: 'FinanzasApp',
-        body: 'Notificación de prueba'
+      const token = await auth.currentUser?.getIdToken();
+      if (!token) {
+        alert('No autenticado');
+        return;
+      }
+      const apiBase = process.env.REACT_APP_API_BASE || '';
+      const response = await fetch(`${apiBase}/api/send-push`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          userId: user.id,
+          title: 'FinanzasApp',
+          body: 'Notificación de prueba'
+        })
       });
+      if (!response.ok) {
+        throw new Error('Request failed');
+      }
       alert('✅ Notificación enviada. Revisa tu navegador.');
     } catch (error) {
-      alert('❌ Error enviando notificación push.');
+      alert('❌ Error enviando push. Verifica VAPID y Functions.');
     }
   };
 
@@ -310,10 +326,10 @@ const Settings: React.FC = () => {
           </h2>
         </div>
         <div className="p-6 space-y-4">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center">
-              <Mail className="mr-3" size={18} />
-              <div>
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+            <div className="flex items-start">
+              <Mail className="mr-3 mt-0.5" size={18} />
+              <div className="min-w-0">
                 <p className={`font-semibold transition-colors ${
                   isDarkMode ? 'text-white' : 'text-gray-800'
                 }`}>
@@ -340,8 +356,8 @@ const Settings: React.FC = () => {
             </button>
           </div>
 
-          <div className="flex items-center justify-between">
-            <div>
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+            <div className="min-w-0">
               <p className={`font-semibold transition-colors ${
                 isDarkMode ? 'text-white' : 'text-gray-800'
               }`}>
@@ -367,8 +383,8 @@ const Settings: React.FC = () => {
             </button>
           </div>
           
-          <div className="flex items-center justify-between">
-            <div>
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+            <div className="min-w-0">
               <p className={`font-semibold transition-colors ${
                 isDarkMode ? 'text-white' : 'text-gray-800'
               }`}>

@@ -1,6 +1,5 @@
 import { Transaction, Account, Category } from '../types';
-import { httpsCallable } from 'firebase/functions';
-import { functions } from '../firebase/config';
+import { auth } from '../firebase/config';
 
 // Simulación de servicio de email - en producción esto se conectaría a un backend real
 export interface EmailData {
@@ -12,12 +11,22 @@ export interface EmailData {
 
 export const sendEmail = async (emailData: EmailData): Promise<boolean> => {
   try {
-    const callable = httpsCallable(functions, 'sendEmail');
-    await callable({
-      to: emailData.to,
-      subject: emailData.subject,
-      body: emailData.body
+    const token = await auth.currentUser?.getIdToken();
+    if (!token) return false;
+    const apiBase = process.env.REACT_APP_API_BASE || '';
+    const response = await fetch(`${apiBase}/api/send-email`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`
+      },
+      body: JSON.stringify({
+        to: emailData.to,
+        subject: emailData.subject,
+        body: emailData.body
+      })
     });
+    if (!response.ok) return false;
     return true;
   } catch (error) {
     console.error('Error enviando email:', error);

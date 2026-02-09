@@ -1,8 +1,7 @@
 import React, { createContext, useContext, useReducer, useEffect, ReactNode } from 'react';
 import { User, AuthState } from '../types';
-import { auth, signIn, signUp, signOut, getUserData, updateUserData, functions } from '../firebase/config';
+import { auth, signIn, signUp, signOut, getUserData, updateUserData } from '../firebase/config';
 import { onAuthStateChanged } from 'firebase/auth';
-import { httpsCallable } from 'firebase/functions';
 import { identifyUser } from '../utils/analytics';
 
 interface AuthContextType extends AuthState {
@@ -10,6 +9,7 @@ interface AuthContextType extends AuthState {
   register: (email: string, password: string, name: string) => Promise<{ success: boolean; error?: string; errorCode?: string }>;
   logout: () => void;
   updateProfileName: (name: string) => Promise<{ success: boolean; error?: string }>;
+  updateProfileAvatar: (avatar: string) => Promise<{ success: boolean; error?: string }>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -82,7 +82,8 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
           id: firebaseUser.uid,
           email: firebaseUser.email || '',
           name: firebaseUser.email?.split('@')[0] || 'Usuario',
-          createdAt: new Date()
+          createdAt: new Date(),
+          avatar: undefined
         };
         
         dispatch({ type: 'LOGIN_SUCCESS', payload: basicUser });
@@ -96,7 +97,8 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
               id: firebaseUser.uid,
               email: firebaseUser.email || '',
               name: userData.data.name || firebaseUser.email?.split('@')[0] || 'Usuario',
-              createdAt: userData.data.createdAt?.toDate() || new Date()
+              createdAt: userData.data.createdAt?.toDate() || new Date(),
+              avatar: userData.data.avatar || undefined
             };
             dispatch({ type: 'LOGIN_SUCCESS', payload: completeUser });
             identifyUser(completeUser.id, { email: completeUser.email, name: completeUser.name });
@@ -108,10 +110,11 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         // Obtener moneda por país (solo la primera vez)
         try {
           if (!localStorage.getItem('preferredCurrency')) {
-            const callable = httpsCallable(functions, 'getGeoCurrency');
-            const result: any = await callable();
-            const currency = result?.data?.currency || 'USD';
-            const country = result?.data?.country || '';
+            const apiBase = process.env.REACT_APP_API_BASE || '';
+            const response = await fetch(`${apiBase}/api/geo-currency`);
+            const result: any = await response.json();
+            const currency = result?.currency || 'USD';
+            const country = result?.country || '';
             localStorage.setItem('preferredCurrency', currency);
             if (country) {
               localStorage.setItem('preferredCountry', country);
@@ -166,7 +169,8 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
           id: result.user.uid,
           email: result.user.email || '',
           name: result.user.email?.split('@')[0] || 'Usuario',
-          createdAt: new Date()
+          createdAt: new Date(),
+          avatar: undefined
         };
         
         // Actualizar estado inmediatamente
@@ -180,7 +184,8 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
               id: result.user.uid,
               email: result.user.email || '',
               name: userData.data.name || result.user.email?.split('@')[0] || 'Usuario',
-              createdAt: userData.data.createdAt?.toDate() || new Date()
+              createdAt: userData.data.createdAt?.toDate() || new Date(),
+              avatar: userData.data.avatar || undefined
             };
             dispatch({ type: 'LOGIN_SUCCESS', payload: completeUser });
           }
@@ -210,7 +215,8 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
           id: result.user.uid,
           email: result.user.email || '',
           name: name,
-          createdAt: new Date()
+          createdAt: new Date(),
+          avatar: undefined
         };
         
         // Actualizar estado inmediatamente
@@ -251,6 +257,21 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     }
   };
 
+  const updateProfileAvatar = async (avatar: string): Promise<{ success: boolean; error?: string }> => {
+    if (!state.user?.id) return { success: false, error: 'Usuario no autenticado' };
+    try {
+      const result = await updateUserData(state.user.id, { avatar });
+      if (result.success) {
+        const updatedUser = { ...state.user, avatar };
+        dispatch({ type: 'LOGIN_SUCCESS', payload: updatedUser });
+        return { success: true };
+      }
+      return { success: false, error: result.error };
+    } catch (error: any) {
+      return { success: false, error: error.message };
+    }
+  };
+
   return (
     <AuthContext.Provider
       value={{
@@ -259,6 +280,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         register,
         logout,
         updateProfileName,
+        updateProfileAvatar,
       }}
     >
       {children}

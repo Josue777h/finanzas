@@ -456,8 +456,73 @@ const Transactions: React.FC = () => {
         </div>
 
         {filteredTransactions.length > 0 ? (
-          <div className="overflow-x-auto">
-            <table className="w-full">
+          <>
+            {/* Mobile cards */}
+            <div className="space-y-3 md:hidden">
+              {filteredTransactions.map((transaction) => {
+                const account = accounts.find(acc => acc.id === transaction.accountId);
+                return (
+                  <div
+                    key={transaction.id}
+                    className={`rounded-xl border p-4 transition-colors ${
+                      isDarkMode
+                        ? 'border-gray-700 bg-gray-800/50'
+                        : 'border-gray-200 bg-gray-50'
+                    }`}
+                  >
+                    <div className="flex items-start justify-between">
+                      <div>
+                        <p className={`font-semibold ${isDarkMode ? 'text-white' : 'text-gray-800'}`}>
+                          {transaction.description}
+                        </p>
+                        <p className={`text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+                          {new Date(transaction.date).toLocaleDateString('es')}
+                        </p>
+                      </div>
+                      <div className={`text-right font-bold ${
+                        transaction.type === 'income'
+                          ? isDarkMode ? 'text-green-400' : 'text-green-600'
+                          : isDarkMode ? 'text-red-400' : 'text-red-600'
+                      }`}>
+                        {transaction.type === 'income' ? '+' : '-'}{formatCurrency(transaction.amount, currency)}
+                      </div>
+                    </div>
+                    <div className="mt-3 flex items-center justify-between">
+                      <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold ${
+                        isDarkMode ? 'bg-gray-700 text-gray-300' : 'bg-gray-100 text-gray-800'
+                      }`}>
+                        {transaction.category}
+                      </span>
+                      <span className={`text-xs ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+                        {account?.name || 'Cuenta'}
+                      </span>
+                    </div>
+                    <div className="mt-3 flex justify-end space-x-2">
+                      <button
+                        onClick={() => handleEdit(transaction)}
+                        className={`transition-colors ${
+                          isDarkMode ? 'text-gray-400 hover:text-blue-400' : 'text-gray-400 hover:text-blue-600'
+                        }`}
+                      >
+                        <Edit2 size={18} />
+                      </button>
+                      <button
+                        onClick={() => handleDelete(transaction.id)}
+                        className={`transition-colors ${
+                          isDarkMode ? 'text-gray-400 hover:text-red-400' : 'text-gray-400 hover:text-red-600'
+                        }`}
+                      >
+                        <Trash2 size={18} />
+                      </button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+
+            {/* Desktop table */}
+            <div className="hidden md:block overflow-x-auto">
+              <table className="w-full">
               <thead>
                 <tr className={`border-b transition-colors ${
                   isDarkMode ? 'border-gray-700' : 'border-gray-200'
@@ -567,8 +632,9 @@ const Transactions: React.FC = () => {
                   );
                 })}
               </tbody>
-            </table>
-          </div>
+              </table>
+            </div>
+          </>
         ) : (
           <div className="text-center py-12">
             <TrendingUp className={`mx-auto mb-4 transition-colors ${
@@ -595,7 +661,7 @@ const Transactions: React.FC = () => {
 
       {showModal && (
         <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4 z-50">
-          <div className={`rounded-2xl p-6 w-full max-w-md transition-all duration-300 ${
+          <div className={`rounded-2xl p-6 w-full max-w-md transition-all duration-300 max-h-[90vh] overflow-y-auto ${
             isDarkMode
               ? 'bg-gray-800 border border-gray-700'
               : 'bg-white border border-gray-200'

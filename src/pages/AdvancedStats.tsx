@@ -338,7 +338,62 @@ const AdvancedStats: React.FC = () => {
         }`}>
           Análisis Detallado por Cuenta
         </h2>
-        <div className="overflow-x-auto">
+        {/* Mobile cards */}
+        <div className="space-y-3 md:hidden">
+          {accountPerformance.map((account, index) => {
+            const health = account.balance > 0 ? 'Excelente' : account.balance === 0 ? 'Neutral' : 'Crítico';
+            const healthColor = account.balance > 0 
+              ? isDarkMode ? 'text-green-400 bg-green-500/20' : 'text-green-600 bg-green-100'
+              : account.balance === 0 
+                ? isDarkMode ? 'text-yellow-400 bg-yellow-500/20' : 'text-yellow-600 bg-yellow-100'
+                : isDarkMode ? 'text-red-400 bg-red-500/20' : 'text-red-600 bg-red-100';
+            return (
+              <div
+                key={index}
+                className={`rounded-xl border p-4 ${
+                  isDarkMode ? 'border-gray-700 bg-gray-800/50' : 'border-gray-200 bg-gray-50'
+                }`}
+              >
+                <div className="flex items-start justify-between">
+                  <div>
+                    <p className={`font-semibold ${isDarkMode ? 'text-white' : 'text-gray-800'}`}>
+                      {account.name}
+                    </p>
+                    <p className={`text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+                      Transacciones: {account.transactions}
+                    </p>
+                  </div>
+                  <span className={`px-2.5 py-1 rounded-full text-xs font-semibold ${healthColor}`}>
+                    {health}
+                  </span>
+                </div>
+                <div className="mt-3 grid grid-cols-2 gap-2 text-sm">
+                  <div className={`${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                    Balance
+                    <div className={`font-semibold ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>
+                      {formatCurrency(account.balance, currency)}
+                    </div>
+                  </div>
+                  <div className={`${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                    Ingresos
+                    <div className={`font-semibold ${isDarkMode ? 'text-green-400' : 'text-green-600'}`}>
+                      +{formatCurrency(account.income, currency)}
+                    </div>
+                  </div>
+                  <div className={`${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                    Gastos
+                    <div className={`font-semibold ${isDarkMode ? 'text-red-400' : 'text-red-600'}`}>
+                      -{formatCurrency(account.expenses, currency)}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+
+        {/* Desktop table */}
+        <div className="hidden md:block overflow-x-auto">
           <table className="w-full">
             <thead>
               <tr className={`border-b transition-colors ${

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useRef, useState, useEffect, useMemo } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { useFinance } from '../context/FinanceContext';
 import { useTheme } from '../context/ThemeContext';
@@ -7,10 +7,11 @@ import { formatCurrency } from '../utils/formatCurrency';
 import { User, Mail, Calendar, Camera, Save } from 'lucide-react';
 
 const Profile: React.FC = () => {
-  const { user, updateProfileName } = useAuth();
+  const { user, updateProfileName, updateProfileAvatar } = useAuth();
   const { transactions, accounts } = useFinance();
   const { isDarkMode, toggleDarkMode } = useTheme();
   const { currency } = useCurrency();
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [isEditing, setIsEditing] = useState(false);
   const [userStats, setUserStats] = useState({
     totalTransactions: 0,
@@ -30,6 +31,13 @@ const Profile: React.FC = () => {
     name: user?.name || '',
     email: user?.email || '',
   });
+  const [avatarPreview, setAvatarPreview] = useState<string | null>(user?.avatar || null);
+
+  useEffect(() => {
+    if (user?.avatar) {
+      setAvatarPreview(user.avatar);
+    }
+  }, [user?.avatar]);
 
   // Calcular estadísticas del usuario
   const computedStats = useMemo(() => {
@@ -106,6 +114,37 @@ const Profile: React.FC = () => {
     }
   };
 
+  const requestPhotoPermission = () => {
+    const allowed = window.confirm('¿Permites subir una foto de perfil?');
+    if (allowed) {
+      fileInputRef.current?.click();
+    }
+  };
+
+  const handleAvatarChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (!file.type.startsWith('image/')) {
+      alert('Selecciona una imagen válida.');
+      return;
+    }
+    if (file.size > 1024 * 1024 * 2) {
+      alert('La imagen es muy grande. Máximo 2MB.');
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = async () => {
+      const base64 = String(reader.result);
+      setAvatarPreview(base64);
+      const result = await updateProfileAvatar(base64);
+      if (!result.success) {
+        alert('No se pudo guardar la imagen.');
+      }
+    };
+    reader.readAsDataURL(file);
+  };
+
   return (
     <div className="space-y-6">
       <div>
@@ -126,40 +165,59 @@ const Profile: React.FC = () => {
           ? 'bg-gradient-to-br from-gray-800 to-gray-700 border-gray-700'
           : 'bg-white border-gray-200'
       }`}>
-        <div className="flex items-center space-x-6 mb-6">
+        <div className="flex flex-col sm:flex-row sm:items-center gap-4 sm:gap-6 mb-6">
           <div className="relative">
-            <div className={`w-24 h-24 rounded-full flex items-center justify-center text-white text-3xl font-bold ${
+            <div className={`w-24 h-24 rounded-full overflow-hidden flex items-center justify-center text-white text-3xl font-bold ${
               isDarkMode
                 ? 'bg-gradient-to-br from-blue-600 to-purple-600'
                 : 'bg-gradient-to-br from-blue-500 to-purple-600'
             }`}>
-              {user?.name?.charAt(0).toUpperCase()}
+              {avatarPreview ? (
+                <img
+                  src={avatarPreview}
+                  alt="Avatar"
+                  className="w-full h-full object-cover"
+                />
+              ) : (
+                user?.name?.charAt(0).toUpperCase()
+              )}
             </div>
-            <button className={`absolute bottom-0 right-0 p-2 rounded-full transition-all duration-200 ${
+            <button
+              onClick={requestPhotoPermission}
+              className={`absolute bottom-0 right-0 p-2 rounded-full transition-all duration-200 ${
               isDarkMode
                 ? 'bg-blue-600 hover:bg-blue-500 text-white shadow-lg shadow-blue-500/30'
                 : 'bg-blue-600 hover:bg-blue-700 text-white shadow-lg shadow-blue-500/30'
             }`}>
               <Camera size={16} />
             </button>
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/*"
+              className="hidden"
+              onChange={handleAvatarChange}
+            />
           </div>
           
-          <div>
-            <h2 className={`text-2xl font-bold transition-colors ${
+          <div className="min-w-0">
+            <h2 className={`text-2xl font-bold transition-colors truncate ${
               isDarkMode ? 'text-white' : 'text-gray-800'
             }`}>
               {user?.name}
             </h2>
-            <p className={`transition-colors ${
+            <p className={`transition-colors truncate ${
               isDarkMode ? 'text-gray-400' : 'text-gray-600'
             }`}>
               {user?.email}
             </p>
-            <div className={`flex items-center space-x-2 mt-2 text-sm transition-colors ${
+            <div className={`flex items-center space-x-2 mt-2 text-sm transition-colors flex-wrap ${
               isDarkMode ? 'text-gray-400' : 'text-gray-500'
             }`}>
               <Calendar size={16} />
-              <span>Miembro desde {new Date(user?.createdAt || '').toLocaleDateString('es')}</span>
+              <span className="truncate">
+                Miembro desde {new Date(user?.createdAt || '').toLocaleDateString('es')}
+              </span>
             </div>
           </div>
         </div>
