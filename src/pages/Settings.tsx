@@ -191,8 +191,10 @@ const Settings: React.FC = () => {
         alert('No autenticado');
         return;
       }
-      const apiBase = process.env.REACT_APP_API_BASE || '';
-      const response = await fetch(`${apiBase}/.netlify/functions/send-push`, {
+      const rawBase = process.env.REACT_APP_API_BASE || '';
+      const apiBase = rawBase.replace(/\/+$/, '');
+      const url = apiBase ? `${apiBase}/.netlify/functions/send-push` : `/.netlify/functions/send-push`;
+      const response = await fetch(url, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -205,11 +207,13 @@ const Settings: React.FC = () => {
         })
       });
       if (!response.ok) {
-        throw new Error('Request failed');
+        const bodyText = await response.text().catch(() => '');
+        throw new Error(`Request failed (${response.status}): ${bodyText}`);
       }
       alert('✅ Notificación enviada. Revisa tu navegador.');
     } catch (error) {
-      alert('❌ Error enviando push. Verifica VAPID y Functions.');
+      console.error('Error enviando push:', error);
+      alert('❌ Error enviando push. Revisa Logs de Netlify Functions.');
     }
   };
 

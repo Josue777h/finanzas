@@ -110,8 +110,10 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         // Obtener moneda por país (solo la primera vez)
         try {
           if (!localStorage.getItem('preferredCurrency')) {
-            const apiBase = process.env.REACT_APP_API_BASE || '';
-            const response = await fetch(`${apiBase}/.netlify/functions/geo-currency`);
+            const rawBase = process.env.REACT_APP_API_BASE || '';
+            const apiBase = rawBase.replace(/\/+$/, '');
+            const url = apiBase ? `${apiBase}/.netlify/functions/geo-currency` : `/.netlify/functions/geo-currency`;
+            const response = await fetch(url);
             const result: any = await response.json();
             const currency = result?.currency || 'USD';
             const country = result?.country || '';

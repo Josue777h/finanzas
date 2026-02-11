@@ -13,8 +13,10 @@ export const sendEmail = async (emailData: EmailData): Promise<boolean> => {
   try {
     const token = await auth.currentUser?.getIdToken();
     if (!token) return false;
-    const apiBase = process.env.REACT_APP_API_BASE || '';
-    const response = await fetch(`${apiBase}/.netlify/functions/send-email`, {
+    const rawBase = process.env.REACT_APP_API_BASE || '';
+    const apiBase = rawBase.replace(/\/+$/, '');
+    const url = apiBase ? `${apiBase}/.netlify/functions/send-email` : `/.netlify/functions/send-email`;
+    const response = await fetch(url, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -26,7 +28,10 @@ export const sendEmail = async (emailData: EmailData): Promise<boolean> => {
         body: emailData.body
       })
     });
-    if (!response.ok) return false;
+    if (!response.ok) {
+      console.error('sendEmail failed:', response.status, await response.text().catch(() => ''));
+      return false;
+    }
     return true;
   } catch (error) {
     console.error('Error enviando email:', error);

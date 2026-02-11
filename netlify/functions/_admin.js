@@ -22,7 +22,13 @@ const verifyToken = async (token) => {
     throw err;
   }
   getAdminApp();
-  return admin.auth().verifyIdToken(token);
+  try {
+    return await admin.auth().verifyIdToken(token);
+  } catch (e) {
+    const err = new Error('Unauthorized');
+    err.statusCode = 401;
+    throw err;
+  }
 };
 
 const getBearerToken = (req) => {
