@@ -27,12 +27,52 @@ exports.handler = async (event) => {
       return { statusCode: 200, headers: corsHeaders(origin), body: JSON.stringify({ success: true, message: 'No hay tokens registrados' }) };
     }
 
-    const message = {
-      notification: { title, body },
-      tokens,
+    // Enviar por token para diagnosticar y limpiar tokens inválidos sin romper con 500.
+    let successCount = 0;
+    const failed = [];
+    const deleteOps = [];
+
+    for (const tokenValue of tokens) {
+      try {
+        await admin.messaging().send({
+          token: tokenValue,
+          notification: { title, body },
+        });
+        successCount += 1;
+      } catch (sendErr) {
+        const message = sendErr?.message || '';
+        const code = sendErr?.code || 'unknown';
+        failed.push({ token: tokenValue, code, message });
+
+        // Limpieza de tokens claramente inválidos o no registrados.
+        if (
+          message.includes('registration-token-not-registered') ||
+          message.includes('invalid-registration-token') ||
+          code === 'messaging/registration-token-not-registered' ||
+          code === 'messaging/invalid-argument' ||
+          message.includes('Requested entity was not found')
+        ) {
+          deleteOps.push(
+            admin.firestore().collection('userTokens').doc(userId).collection('tokens').doc(tokenValue).delete()
+          );
+        }
+      }
+    }
+
+    if (deleteOps.length > 0) {
+      await Promise.allSettled(deleteOps);
+    }
+
+    return {
+      statusCode: 200,
+      headers: corsHeaders(origin),
+      body: JSON.stringify({
+        success: true,
+        sent: successCount,
+        failed: failed.length,
+        failures: failed.slice(0, 5),
+      }),
     };
-    const response = await admin.messaging().sendEachForMulticast(message);
-    return { statusCode: 200, headers: corsHeaders(origin), body: JSON.stringify({ success: true, results: response.successCount }) };
   } catch (err) {
     const statusCode = err.statusCode || 500;
     return { statusCode, headers: corsHeaders(origin), body: JSON.stringify({ error: err.message || 'Error interno' }) };
