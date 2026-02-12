@@ -62,10 +62,11 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
   useEffect(() => {
     let isMounted = true;
+    let authResolved = false;
     
     // Timeout de seguridad para evitar carga infinita
     const safetyTimeout = setTimeout(() => {
-      if (isMounted && state.isLoading) {
+      if (isMounted && !authResolved) {
         console.log('Timeout de seguridad: deteniendo carga');
         dispatch({ type: 'LOGIN_ERROR' });
       }
@@ -73,6 +74,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     
     const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
       if (!isMounted) return; // Evitar actualizaciones si el componente se desmontó
+      authResolved = true;
       
       clearTimeout(safetyTimeout); // Limpiar timeout si responde a tiempo
       
@@ -158,7 +160,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       clearTimeout(safetyTimeout);
       unsubscribe();
     };
-  }, [state.isLoading]);
+  }, []);
 
   const login = async (email: string, password: string): Promise<{ success: boolean; error?: string; errorCode?: string }> => {
     dispatch({ type: 'LOGIN_START' });
@@ -297,3 +299,7 @@ export const useAuth = () => {
   }
   return context;
 };
+
+
+
+

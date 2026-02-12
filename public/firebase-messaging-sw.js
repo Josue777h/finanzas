@@ -21,7 +21,7 @@ messaging.onBackgroundMessage((payload) => {
   const title = payload.notification?.title || "FinanzasApp";
   const options = {
     body: payload.notification?.body || "",
-    icon: "/logo192.png",
+    icon: "/finanzas-icon.svg",
   };
   self.registration.showNotification(title, options);
 });

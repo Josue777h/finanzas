@@ -7,9 +7,7 @@ import { Bell, Shield, Database, HelpCircle, Download, Trash2, Mail, AlertTriang
 import { exportTransactionsToExcel, exportAccountsToExcel, exportFullReportToExcel } from '../utils/exportToExcel';
 import { clearCache, deleteAllUserData, deleteCurrentUser, updateUserData } from '../firebase/config';
 import { sendMonthlyReport, generateAndDownloadMonthlyReport } from '../utils/monthlyReportService';
-import { checkAndSendAlerts } from '../utils/emailService';
 import { requestPushPermission } from '../utils/pushService';
-import { auth } from '../firebase/config';
 import { useCurrency } from '../context/CurrencyContext';
 
 const Settings: React.FC = () => {
@@ -111,20 +109,6 @@ const Settings: React.FC = () => {
     generateAndDownloadMonthlyReport(transactions, accounts, categories);
   };
 
-  const handleTestEmailAlerts = async () => {
-    if (!user?.email) {
-      alert('No se puede enviar alertas. Email no disponible.');
-      return;
-    }
-    
-    try {
-      await checkAndSendAlerts(transactions, accounts, user.email, notifications);
-      alert('✅ Sistema de alertas verificado. Revisa tu email para ver las alertas generadas.');
-    } catch (error) {
-      alert('❌ Error al verificar alertas. Verifica configuración de SendGrid y Functions.');
-    }
-  };
-
   const handleClearCache = () => {
     if (window.confirm('¿Estás seguro de que quieres limpiar la caché local? Esto eliminará los datos temporales.')) {
       if (user?.id) {
@@ -180,40 +164,6 @@ const Settings: React.FC = () => {
     } catch (error) {
       console.error('Error eliminando cuenta:', error);
       alert('Hubo un error al eliminar tu cuenta. Por favor intenta nuevamente.');
-    }
-  };
-
-  const handleTestPush = async () => {
-    if (!user?.id) return;
-    try {
-      const token = await auth.currentUser?.getIdToken();
-      if (!token) {
-        alert('No autenticado');
-        return;
-      }
-      const rawBase = process.env.REACT_APP_API_BASE || '';
-      const apiBase = rawBase.replace(/\/+$/, '');
-      const url = apiBase ? `${apiBase}/.netlify/functions/send-push` : `/.netlify/functions/send-push`;
-      const response = await fetch(url, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
-        },
-        body: JSON.stringify({
-          userId: user.id,
-          title: 'FinanzasApp',
-          body: 'Notificación de prueba'
-        })
-      });
-      if (!response.ok) {
-        const bodyText = await response.text().catch(() => '');
-        throw new Error(`Request failed (${response.status}): ${bodyText}`);
-      }
-      alert('✅ Notificación enviada. Revisa tu navegador.');
-    } catch (error) {
-      console.error('Error enviando push:', error);
-      alert('❌ Error enviando push. Revisa Logs de Netlify Functions.');
     }
   };
 
@@ -445,30 +395,6 @@ const Settings: React.FC = () => {
               >
                 <FileText size={16} />
                 <span>Descargar Reporte Mensual</span>
-              </button>
-              
-              <button
-                onClick={handleTestEmailAlerts}
-                className={`w-full px-4 py-3 rounded-xl font-medium transition-all duration-200 flex items-center justify-center space-x-2 btn-accent ${
-                  isDarkMode
-                    ? 'bg-purple-600 hover:bg-purple-700 text-white'
-                    : 'bg-purple-600 hover:bg-purple-700 text-white'
-                }`}
-              >
-                <AlertTriangle size={16} />
-                <span>Probar Alertas por Email</span>
-              </button>
-
-              <button
-                onClick={handleTestPush}
-                className={`w-full px-4 py-3 rounded-xl font-medium transition-all duration-200 flex items-center justify-center space-x-2 ${
-                  isDarkMode
-                    ? 'bg-gray-700 hover:bg-gray-600 text-white'
-                    : 'bg-gray-200 hover:bg-gray-300 text-gray-800'
-                }`}
-              >
-                <Bell size={16} />
-                <span>Probar Notificación Push</span>
               </button>
             </div>
             
