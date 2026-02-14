@@ -654,7 +654,7 @@ export const exportFullReportToExcel = (transactions: Transaction[], accounts: A
   // Generar archivo
   const excelBuffer = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
   const blob = new Blob([excelBuffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
-  const fileName = `Reporte_Finanzas_Profesional_${new Date().toISOString().split('T')[0]}.xlsx`;
+  const fileName = `Reporte_Spendo_Profesional_${new Date().toISOString().split('T')[0]}.xlsx`;
   
   saveAs(blob, fileName);
 };

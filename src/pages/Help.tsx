@@ -106,7 +106,7 @@ const Help: React.FC = () => {
 
   const handleSendMessage = () => {
     if (supportMessage.trim()) {
-      const subject = encodeURIComponent('Soporte FinanzasApp');
+      const subject = encodeURIComponent('Soporte Spendo');
       const body = encodeURIComponent(supportMessage.trim());
       window.location.href = `mailto:soporte@finanzasapp.com?subject=${subject}&body=${body}`;
       setMessageSent(true);

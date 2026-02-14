@@ -2,25 +2,26 @@ import React, { useState } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { useToast } from '../context/ToastContext';
 import { useTheme } from '../context/ThemeContext';
-import { Eye, EyeOff, Mail, Lock, User, Moon, Sun, Wallet } from 'lucide-react';
+import { Eye, EyeOff, Mail, Lock, User, Moon, Sun, Wallet, Chrome } from 'lucide-react';
 
 const Login: React.FC = () => {
   const [isLogin, setIsLogin] = useState(true);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [name, setName] = useState('');
+  const [showRegisterHint, setShowRegisterHint] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   
-  const { login, register } = useAuth();
+  const { login, register, loginWithGoogle, registerWithGoogle } = useAuth();
   const { showToast } = useToast();
   const { isDarkMode, toggleDarkMode } = useTheme();
 
   // Función para obtener mensaje de error amigable
-  const getErrorMessage = (errorCode: string): string => {
+  const getErrorMessage = (errorCode: string, rawError?: string): string => {
     switch (errorCode) {
       case 'auth/user-not-found':
-        return 'Correo electrónico no encontrado';
+        return 'Cuenta no existente. Regístrate primero';
       case 'auth/wrong-password':
       case 'auth/invalid-credential':
         return 'Contraseña incorrecta';
@@ -32,8 +33,50 @@ const Login: React.FC = () => {
         return 'La contraseña es muy débil. Debe tener al menos 6 caracteres';
       case 'auth/network-request-failed':
         return 'Error de conexión. Verifica tu internet';
+      case 'auth/popup-closed-by-user':
+        return 'Cerraste la ventana de Google antes de completar el acceso';
+      case 'auth/popup-blocked':
+        return 'El navegador bloqueó la ventana emergente de Google';
+      case 'auth/account-exists-with-different-credential':
+        return 'Este correo ya está registrado con otro método de acceso';
+      case 'auth/operation-not-allowed':
+        return 'Google/Auth no está habilitado en Firebase';
+      case 'auth/unauthorized-domain':
+        return 'Este dominio no está autorizado en Firebase';
+      case 'unavailable':
+        return 'Firebase no está disponible temporalmente. Intenta de nuevo en unos segundos';
       default:
+        if (errorCode) return `Error de autenticacion: ${errorCode}`;
+        if (rawError) return `Error de autenticacion: ${rawError}`;
         return 'Error al procesar la solicitud. Intenta de nuevo';
+    }
+  };
+
+  const handleGoogleAuth = async () => {
+    setIsLoading(true);
+    try {
+      const result = isLogin ? await loginWithGoogle() : await registerWithGoogle();
+      if (result.success) {
+        setShowRegisterHint(false);
+        const successMessage = isLogin
+          ? 'Inicio con Google exitoso'
+          : result.isNewUser
+            ? 'Cuenta creada con Google correctamente'
+            : 'Esta cuenta de Google ya estaba registrada';
+        showToast(successMessage, 'success');
+      } else {
+        const errorMessage = getErrorMessage(result.errorCode || '', result.error);
+        showToast(errorMessage, 'error');
+        if (isLogin && result.errorCode === 'auth/user-not-found') {
+          setShowRegisterHint(true);
+          setIsLogin(false);
+        }
+      }
+    } catch (err: any) {
+      console.error('Error con Google Auth:', err);
+      showToast('No se pudo autenticar con Google', 'error');
+    } finally {
+      setIsLoading(false);
     }
   };
 
@@ -48,17 +91,19 @@ const Login: React.FC = () => {
         result = await login(email, password);
         
         if (result.success) {
+          setShowRegisterHint(false);
           showToast('Inicio exitoso', 'success');
         } else {
           // Obtener código de error y mostrar mensaje amigable
           const errorCode = result.errorCode || '';
-          const errorMessage = getErrorMessage(errorCode);
+          const errorMessage = getErrorMessage(errorCode, result.error);
           showToast(errorMessage, 'error');
         }
       } else {
         result = await register(email, password, name);
         
         if (result.success) {
+          setShowRegisterHint(false);
           showToast('Registro exitoso', 'success');
           // Cambiar a modo login después de registro exitoso
           setTimeout(() => {
@@ -67,7 +112,7 @@ const Login: React.FC = () => {
         } else {
           // Obtener código de error y mostrar mensaje amigable
           const errorCode = result.errorCode || '';
-          const errorMessage = getErrorMessage(errorCode);
+          const errorMessage = getErrorMessage(errorCode, result.error);
           showToast(errorMessage, 'error');
         }
       }
@@ -129,6 +174,15 @@ const Login: React.FC = () => {
           }`}>
             {isLogin ? 'Inicia sesión para gestionar tus finanzas' : 'Regístrate para comenzar'}
           </p>
+          {showRegisterHint && !isLogin && (
+            <div className={`mt-4 text-left rounded-xl border px-4 py-3 text-sm ${
+              isDarkMode
+                ? 'bg-amber-950/40 border-amber-700 text-amber-200'
+                : 'bg-amber-50 border-amber-300 text-amber-800'
+            }`}>
+              No encontramos esa cuenta en Spendo. Para continuar, regístrala primero.
+            </div>
+          )}
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-6">
@@ -244,9 +298,32 @@ const Login: React.FC = () => {
           </button>
         </form>
 
+        <div className="my-6 flex items-center gap-3">
+          <div className={`h-px flex-1 ${isDarkMode ? 'bg-gray-700' : 'bg-gray-200'}`}></div>
+          <span className={`text-xs uppercase tracking-wide ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+            o
+          </span>
+          <div className={`h-px flex-1 ${isDarkMode ? 'bg-gray-700' : 'bg-gray-200'}`}></div>
+        </div>
+
+        <button
+          type="button"
+          onClick={handleGoogleAuth}
+          disabled={isLoading}
+          className={`w-full py-3.5 rounded-xl font-semibold transition-all duration-200 border flex items-center justify-center gap-2 ${
+            isDarkMode
+              ? 'bg-gray-800 border-gray-600 text-white hover:bg-gray-700'
+              : 'bg-white border-gray-300 text-gray-800 hover:bg-gray-50'
+          } disabled:opacity-50 disabled:cursor-not-allowed`}
+        >
+          <Chrome size={18} />
+          <span>{isLogin ? 'Iniciar con Google' : 'Registrarse con Google'}</span>
+        </button>
+
         <div className="mt-6 text-center">
           <button
             onClick={() => {
+              setShowRegisterHint(false);
               setIsLogin(!isLogin);
             }}
             className={`text-sm font-medium transition-colors ${
@@ -267,3 +344,6 @@ const Login: React.FC = () => {
 };
 
 export default Login;
+
+
+

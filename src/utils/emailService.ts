@@ -74,7 +74,7 @@ export const generateMonthlyReport = (
   
   const monthName = now.toLocaleDateString('es-ES', { month: 'long', year: 'numeric' });
   
-  const body = `REPORTE MENSUAL FINANZAS APP
+  const body = `REPORTE MENSUAL SPENDO
 ================================
 Periodo: ${monthName}
 Usuario: ${userEmail}
@@ -115,7 +115,7 @@ PROXIMOS PASOS
 • Revisa las categorías con mayor gasto
 
 ---
-Este es un reporte automático generado por Finanzas App.
+Este es un reporte automático generado por Spendo.
 Para dejar de recibir estos emails, configura tus preferencias en la aplicación.`.trim();
   
   return {
@@ -152,7 +152,7 @@ Te recomendamos:
 • Actualizar tu presupuesto si es necesario
 
 ---
-Finanzas App - Tu asistente financiero personal`.trim();
+Spendo - Tu asistente financiero personal`.trim();
       break;
       
     case 'high_expense':
@@ -171,7 +171,7 @@ Fecha: ${new Date(data.date).toLocaleDateString('es-ES')}
 Este gasto representa el ${(data.percentage * 100).toFixed(1)}% de tu presupuesto mensual para esta categoria.
 
 ---
-Finanzas App - Tu asistente financiero personal`.trim();
+Spendo - Tu asistente financiero personal`.trim();
       break;
       
     case 'income_milestone':
@@ -189,7 +189,7 @@ Progreso: ${((data.actual / data.target) * 100).toFixed(1)}%
 Sigue así, vas por excelente camino hacia tus metas financieras.
 
 ---
-Finanzas App - Tu asistente financiero personal`.trim();
+Spendo - Tu asistente financiero personal`.trim();
       break;
   }
   

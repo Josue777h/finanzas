@@ -18,7 +18,7 @@ firebase.initializeApp({
 const messaging = firebase.messaging();
 
 messaging.onBackgroundMessage((payload) => {
-  const title = payload.notification?.title || "FinanzasApp";
+  const title = payload.notification?.title || "Spendo";
   const options = {
     body: payload.notification?.body || "",
     icon: "/finanzas-icon.svg",

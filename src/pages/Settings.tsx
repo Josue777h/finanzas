@@ -771,7 +771,7 @@ const Settings: React.FC = () => {
             
             <button
               onClick={() => {
-                window.location.href = 'mailto:soporte@finanzasapp.com?subject=Soporte%20FinanzasApp';
+                window.location.href = 'mailto:soporte@finanzasapp.com?subject=Soporte%20Spendo';
               }}
               className={`text-left p-4 rounded-lg transition-colors ${
               isDarkMode 

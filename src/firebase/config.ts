@@ -3,6 +3,9 @@ import {
   getAuth, 
   createUserWithEmailAndPassword, 
   signInWithEmailAndPassword, 
+  signInWithPopup,
+  GoogleAuthProvider,
+  getAdditionalUserInfo,
   signOut as firebaseSignOut,
   deleteUser
 } from 'firebase/auth';
@@ -84,6 +87,101 @@ export const signUp = async (email: string, password: string, name: string) => {
     console.error('Error detallado en registro:', error);
     console.error('Código de error:', error.code);
     console.error('Mensaje de error:', error.message);
+    return { success: false, error: error.message, errorCode: error.code };
+  }
+};
+
+export const signInWithGoogle = async () => {
+  try {
+    const provider = new GoogleAuthProvider();
+    provider.setCustomParameters({ prompt: 'select_account' });
+
+    const userCredential = await signInWithPopup(auth, provider);
+    const additionalUserInfo = getAdditionalUserInfo(userCredential);
+    const user = userCredential.user;
+
+    // Si Firebase lo marca como usuario nuevo, no estÃ¡ registrado en la app.
+    if (additionalUserInfo?.isNewUser) {
+      void deleteUser(user).catch(() => undefined);
+      await firebaseSignOut(auth);
+      return {
+        success: false,
+        error: 'Cuenta no registrada',
+        errorCode: 'auth/user-not-found',
+      };
+    }
+
+    const userDocRef = doc(db, 'users', user.uid);
+    const userDocSnap = await getDoc(userDocRef);
+    if (!userDocSnap.exists()) {
+      void deleteUser(user).catch(() => undefined);
+      await firebaseSignOut(auth);
+      return {
+        success: false,
+        error: 'Cuenta no registrada',
+        errorCode: 'auth/user-not-found',
+      };
+    }
+
+    const resolvedName = userDocSnap.data().name || user.displayName || user.email?.split('@')[0] || 'Usuario';
+    await setDoc(
+      userDocRef,
+      {
+        email: user.email || '',
+        name: resolvedName,
+      },
+      { merge: true }
+    );
+
+    return {
+      success: true,
+      user,
+      isNewUser: false,
+    };
+  } catch (error: any) {
+    return { success: false, error: error.message, errorCode: error.code };
+  }
+};
+
+export const signUpWithGoogle = async () => {
+  try {
+    const provider = new GoogleAuthProvider();
+    provider.setCustomParameters({ prompt: 'select_account' });
+
+    const userCredential = await signInWithPopup(auth, provider);
+    const additionalUserInfo = getAdditionalUserInfo(userCredential);
+    const user = userCredential.user;
+    const resolvedName = user.displayName || user.email?.split('@')[0] || 'Usuario';
+    const userDocRef = doc(db, 'users', user.uid);
+
+    try {
+      await setDoc(
+        userDocRef,
+        {
+          uid: user.uid,
+          email: user.email || '',
+          name: resolvedName,
+          createdAt: new Date(),
+        },
+        { merge: true }
+      );
+      localStorage.removeItem('spendo_pending_profile_uid');
+    } catch (profileError: any) {
+      // Si Firestore está temporalmente no disponible, permitimos continuar
+      // y sincronizamos el perfil cuando vuelva la conexión.
+      if (profileError?.code === 'unavailable' || profileError?.code === 'deadline-exceeded') {
+        localStorage.setItem('spendo_pending_profile_uid', user.uid);
+      } else {
+        throw profileError;
+      }
+    }
+
+    return {
+      success: true,
+      user,
+      isNewUser: additionalUserInfo?.isNewUser ?? false,
+    };
+  } catch (error: any) {
     return { success: false, error: error.message, errorCode: error.code };
   }
 };

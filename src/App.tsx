@@ -17,7 +17,7 @@ import Settings from './pages/Settings';
 import Help from './pages/Help';
 
 const AppContent: React.FC = () => {
-  const { isAuthenticated, isLoading } = useAuth();
+  const { isAuthenticated } = useAuth();
   const { toasts, removeToast } = useToast();
   const [currentPage, setCurrentPage] = useState('home');
 
@@ -31,20 +31,6 @@ const AppContent: React.FC = () => {
     window.addEventListener('app:navigate', handler);
     return () => window.removeEventListener('app:navigate', handler);
   }, []);
-
-  if (isLoading) {
-    return (
-      <>
-        <ToastContainer toasts={toasts} onClose={removeToast} />
-        <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-          <div className="text-center">
-            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
-            <p className="text-gray-600">Cargando...</p>
-          </div>
-        </div>
-      </>
-    );
-  }
 
   if (!isAuthenticated) {
     return (

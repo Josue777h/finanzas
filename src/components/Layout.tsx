@@ -52,7 +52,7 @@ const Layout: React.FC<LayoutProps> = ({ children, currentPage, onPageChange }) 
             <Home className="text-white" size={20} />
           </div>
           <h1 className={`text-xl font-bold ${isDarkMode ? 'text-white' : 'text-gray-800'}`}>
-            FinanzasApp
+            Spendo
           </h1>
         </div>
         <button
@@ -169,7 +169,7 @@ const Layout: React.FC<LayoutProps> = ({ children, currentPage, onPageChange }) 
                 <Home className="text-white" size={20} />
               </div>
               <h1 className={`text-xl font-bold ${isDarkMode ? 'text-white' : 'text-gray-800'}`}>
-                FinanzasApp
+                Spendo
               </h1>
             </div>
             <p className={`text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}>

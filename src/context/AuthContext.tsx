@@ -1,12 +1,14 @@
 import React, { createContext, useContext, useReducer, useEffect, ReactNode } from 'react';
 import { User, AuthState } from '../types';
-import { auth, signIn, signUp, signOut, getUserData, updateUserData } from '../firebase/config';
+import { auth, signIn, signUp, signOut, signInWithGoogle, signUpWithGoogle, getUserData, updateUserData } from '../firebase/config';
 import { onAuthStateChanged } from 'firebase/auth';
 import { identifyUser } from '../utils/analytics';
 
 interface AuthContextType extends AuthState {
   login: (email: string, password: string) => Promise<{ success: boolean; error?: string; errorCode?: string }>;
   register: (email: string, password: string, name: string) => Promise<{ success: boolean; error?: string; errorCode?: string }>;
+  loginWithGoogle: () => Promise<{ success: boolean; error?: string; errorCode?: string; isNewUser?: boolean }>;
+  registerWithGoogle: () => Promise<{ success: boolean; error?: string; errorCode?: string; isNewUser?: boolean }>;
   logout: () => void;
   updateProfileName: (name: string) => Promise<{ success: boolean; error?: string }>;
   updateProfileAvatar: (avatar: string) => Promise<{ success: boolean; error?: string }>;
@@ -26,14 +28,14 @@ type AuthAction =
 const initialState: AuthState = {
   user: null,
   isAuthenticated: false,
-  isLoading: false, // Cambiado a false para evitar carga infinita
+  isLoading: false,
 };
 
 const authReducer = (state: AuthState, action: AuthAction): AuthState => {
   switch (action.type) {
     case 'LOGIN_START':
     case 'REGISTER_START':
-      return { ...state, isLoading: true };
+      return { ...state, isLoading: false };
     case 'LOGIN_SUCCESS':
     case 'REGISTER_SUCCESS':
       return {
@@ -60,56 +62,81 @@ const authReducer = (state: AuthState, action: AuthAction): AuthState => {
 export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
   const [state, dispatch] = useReducer(authReducer, initialState);
 
+  const getUserProfileWithRetry = async (uid: string, maxAttempts = 8, delayMs = 150) => {
+    for (let attempt = 0; attempt < maxAttempts; attempt++) {
+      const userData = await getUserData(uid);
+      if (userData.success && userData.data) {
+        return userData;
+      }
+      if (attempt < maxAttempts - 1) {
+        await new Promise((resolve) => setTimeout(resolve, delayMs));
+      }
+    }
+    return { success: false as const };
+  };
+
   useEffect(() => {
     let isMounted = true;
     let authResolved = false;
-    
-    // Timeout de seguridad para evitar carga infinita
+
     const safetyTimeout = setTimeout(() => {
       if (isMounted && !authResolved) {
-        console.log('Timeout de seguridad: deteniendo carga');
         dispatch({ type: 'LOGIN_ERROR' });
       }
-    }, 5000); // 5 segundos máximo
-    
+    }, 8000);
+
     const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
-      if (!isMounted) return; // Evitar actualizaciones si el componente se desmontó
+      if (!isMounted) return;
       authResolved = true;
-      
-      clearTimeout(safetyTimeout); // Limpiar timeout si responde a tiempo
-      
+      clearTimeout(safetyTimeout);
+
       if (firebaseUser) {
-        // Usuario autenticado - crear usuario básico inmediatamente
-        const basicUser: User = {
-          id: firebaseUser.uid,
-          email: firebaseUser.email || '',
-          name: firebaseUser.email?.split('@')[0] || 'Usuario',
-          createdAt: new Date(),
-          avatar: undefined
-        };
-        
-        dispatch({ type: 'LOGIN_SUCCESS', payload: basicUser });
-        identifyUser(basicUser.id, { email: basicUser.email, name: basicUser.name });
-        
-        // Luego intentar obtener datos completos (en segundo plano)
-        try {
-          const userData = await getUserData(firebaseUser.uid);
-          if (userData.success && userData.data && isMounted) {
-            const completeUser: User = {
+        // Evita carrera entre Auth y Firestore (sobre todo en registro con Google)
+        const userData = await getUserProfileWithRetry(firebaseUser.uid);
+        if (!isMounted) return;
+
+        if (!(userData.success && userData.data)) {
+          const pendingProfileUid = localStorage.getItem('spendo_pending_profile_uid');
+          if (pendingProfileUid === firebaseUser.uid) {
+            const fallbackUser: User = {
               id: firebaseUser.uid,
               email: firebaseUser.email || '',
-              name: userData.data.name || firebaseUser.email?.split('@')[0] || 'Usuario',
-              createdAt: userData.data.createdAt?.toDate() || new Date(),
-              avatar: userData.data.avatar || undefined
+              name: firebaseUser.displayName || firebaseUser.email?.split('@')[0] || 'Usuario',
+              createdAt: new Date(),
+              avatar: firebaseUser.photoURL || undefined,
             };
-            dispatch({ type: 'LOGIN_SUCCESS', payload: completeUser });
-            identifyUser(completeUser.id, { email: completeUser.email, name: completeUser.name });
+            dispatch({ type: 'LOGIN_SUCCESS', payload: fallbackUser });
+
+            // Reintento silencioso de sincronización del perfil
+            void updateUserData(firebaseUser.uid, {
+              uid: firebaseUser.uid,
+              email: firebaseUser.email || '',
+              name: fallbackUser.name,
+              createdAt: new Date(),
+            }).then((res) => {
+              if (res.success) {
+                localStorage.removeItem('spendo_pending_profile_uid');
+              }
+            });
+            return;
           }
-        } catch (error) {
-          console.log('Error obteniendo datos completos, usando datos básicos:', error);
+
+          await signOut();
+          dispatch({ type: 'LOGIN_ERROR' });
+          return;
         }
 
-        // Obtener moneda por país (solo la primera vez)
+        const completeUser: User = {
+          id: firebaseUser.uid,
+          email: firebaseUser.email || '',
+          name: userData.data.name || firebaseUser.displayName || firebaseUser.email?.split('@')[0] || 'Usuario',
+          createdAt: userData.data.createdAt?.toDate() || new Date(),
+          avatar: userData.data.avatar || firebaseUser.photoURL || undefined,
+        };
+
+        dispatch({ type: 'LOGIN_SUCCESS', payload: completeUser });
+        identifyUser(completeUser.id, { email: completeUser.email, name: completeUser.name });
+
         try {
           if (!localStorage.getItem('preferredCurrency')) {
             const rawBase = process.env.REACT_APP_API_BASE || '';
@@ -120,18 +147,14 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
             const currency = result?.currency || 'USD';
             const country = result?.country || '';
             localStorage.setItem('preferredCurrency', currency);
-            if (country) {
-              localStorage.setItem('preferredCountry', country);
-            }
-            // Guardar en Firestore para persistencia multi-dispositivo
-            if (firebaseUser?.uid) {
+            if (country) localStorage.setItem('preferredCountry', country);
+            if (firebaseUser.uid) {
               await updateUserData(firebaseUser.uid, {
                 preferredCurrency: currency,
                 preferredCountry: country,
               });
             }
           } else {
-            // Si ya existe, intentar sincronizar desde Firestore si hay datos
             try {
               const existing = await getUserData(firebaseUser.uid);
               if (existing.success && existing.data) {
@@ -143,14 +166,13 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
                 }
               }
             } catch (e) {
-              // no bloquear
+              // no-op
             }
           }
         } catch (error) {
-          // No bloquear la sesión si falla
+          // no-op
         }
       } else {
-        // No hay usuario autenticado
         dispatch({ type: 'LOGIN_ERROR' });
       }
     });
@@ -164,75 +186,114 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
   const login = async (email: string, password: string): Promise<{ success: boolean; error?: string; errorCode?: string }> => {
     dispatch({ type: 'LOGIN_START' });
-    
+
     try {
       const result = await signIn(email, password);
       if (result.success && result.user) {
-        // Crear usuario inmediatamente para respuesta rápida
-        const user: User = {
+        const userData = await getUserData(result.user.uid);
+        if (!(userData.success && userData.data)) {
+          await signOut();
+          dispatch({ type: 'LOGIN_ERROR' });
+          return {
+            success: false,
+            error: 'Cuenta no registrada',
+            errorCode: 'auth/user-not-found',
+          };
+        }
+
+        const completeUser: User = {
           id: result.user.uid,
           email: result.user.email || '',
-          name: result.user.email?.split('@')[0] || 'Usuario',
-          createdAt: new Date(),
-          avatar: undefined
+          name: userData.data.name || result.user.email?.split('@')[0] || 'Usuario',
+          createdAt: userData.data.createdAt?.toDate() || new Date(),
+          avatar: userData.data.avatar || undefined,
         };
-        
-        // Actualizar estado inmediatamente
-        dispatch({ type: 'LOGIN_SUCCESS', payload: user });
-        
-        // Luego obtener datos completos de Firestore (en segundo plano)
-        try {
-          const userData = await getUserData(result.user.uid);
-          if (userData.success && userData.data) {
-            const completeUser: User = {
-              id: result.user.uid,
-              email: result.user.email || '',
-              name: userData.data.name || result.user.email?.split('@')[0] || 'Usuario',
-              createdAt: userData.data.createdAt?.toDate() || new Date(),
-              avatar: userData.data.avatar || undefined
-            };
-            dispatch({ type: 'LOGIN_SUCCESS', payload: completeUser });
-          }
-        } catch (error) {
-          console.log('Error obteniendo datos completos, usando datos básicos:', error);
-        }
-        
+
+        dispatch({ type: 'LOGIN_SUCCESS', payload: completeUser });
         return { success: true };
-      } else {
-        console.error('Error de login:', result.error);
-        return { success: false, error: result.error, errorCode: result.errorCode };
       }
+
+      dispatch({ type: 'LOGIN_ERROR' });
+      return { success: false, error: result.error, errorCode: result.errorCode };
     } catch (error: any) {
-      console.error('Error inesperado en login:', error);
+      dispatch({ type: 'LOGIN_ERROR' });
       return { success: false, error: error.message, errorCode: error.code };
     }
   };
 
   const register = async (email: string, password: string, name: string): Promise<{ success: boolean; error?: string; errorCode?: string }> => {
     dispatch({ type: 'REGISTER_START' });
-    
+
     try {
       const result = await signUp(email, password, name);
       if (result.success && result.user) {
-        // Crear usuario inmediatamente para respuesta rápida
         const user: User = {
           id: result.user.uid,
           email: result.user.email || '',
-          name: name,
+          name,
           createdAt: new Date(),
-          avatar: undefined
+          avatar: undefined,
         };
-        
-        // Actualizar estado inmediatamente
+
         dispatch({ type: 'REGISTER_SUCCESS', payload: user });
-        
         return { success: true };
-      } else {
-        console.error('Error de registro:', result.error);
-        return { success: false, error: result.error, errorCode: result.errorCode };
       }
+
+      dispatch({ type: 'REGISTER_ERROR' });
+      return { success: false, error: result.error, errorCode: result.errorCode };
     } catch (error: any) {
-      console.error('Error inesperado en registro:', error);
+      dispatch({ type: 'REGISTER_ERROR' });
+      return { success: false, error: error.message, errorCode: error.code };
+    }
+  };
+
+  const loginWithGoogle = async (): Promise<{ success: boolean; error?: string; errorCode?: string; isNewUser?: boolean }> => {
+    dispatch({ type: 'LOGIN_START' });
+
+    try {
+      const result = await signInWithGoogle();
+      if (result.success && result.user) {
+        const user: User = {
+          id: result.user.uid,
+          email: result.user.email || '',
+          name: result.user.displayName || result.user.email?.split('@')[0] || 'Usuario',
+          createdAt: new Date(),
+          avatar: result.user.photoURL || undefined,
+        };
+
+        dispatch({ type: 'LOGIN_SUCCESS', payload: user });
+        return { success: true, isNewUser: false };
+      }
+
+      dispatch({ type: 'LOGIN_ERROR' });
+      return { success: false, error: result.error, errorCode: result.errorCode };
+    } catch (error: any) {
+      dispatch({ type: 'LOGIN_ERROR' });
+      return { success: false, error: error.message, errorCode: error.code };
+    }
+  };
+
+  const registerWithGoogle = async (): Promise<{ success: boolean; error?: string; errorCode?: string; isNewUser?: boolean }> => {
+    dispatch({ type: 'REGISTER_START' });
+
+    try {
+      const result = await signUpWithGoogle();
+      if (result.success && result.user) {
+        const user: User = {
+          id: result.user.uid,
+          email: result.user.email || '',
+          name: result.user.displayName || result.user.email?.split('@')[0] || 'Usuario',
+          createdAt: new Date(),
+          avatar: result.user.photoURL || undefined,
+        };
+        dispatch({ type: 'REGISTER_SUCCESS', payload: user });
+        return { success: true, isNewUser: result.isNewUser };
+      }
+
+      dispatch({ type: 'REGISTER_ERROR' });
+      return { success: false, error: result.error, errorCode: result.errorCode };
+    } catch (error: any) {
+      dispatch({ type: 'REGISTER_ERROR' });
       return { success: false, error: error.message, errorCode: error.code };
     }
   };
@@ -242,7 +303,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       await signOut();
       dispatch({ type: 'LOGOUT' });
     } catch (error) {
-      console.error('Error al cerrar sesión:', error);
+      console.error('Error al cerrar sesion:', error);
     }
   };
 
@@ -282,6 +343,8 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         ...state,
         login,
         register,
+        loginWithGoogle,
+        registerWithGoogle,
         logout,
         updateProfileName,
         updateProfileAvatar,
@@ -299,7 +362,3 @@ export const useAuth = () => {
   }
   return context;
 };
-
-
-
-
