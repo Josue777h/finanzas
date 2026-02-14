@@ -33,6 +33,8 @@ const Login: React.FC = () => {
         return 'La contraseña es muy débil. Debe tener al menos 6 caracteres';
       case 'auth/network-request-failed':
         return 'Error de conexión. Verifica tu internet';
+      case 'auth/timeout':
+        return 'La conexion tardo demasiado. Intenta nuevamente';
       case 'auth/popup-closed-by-user':
         return 'Cerraste la ventana de Google antes de completar el acceso';
       case 'auth/popup-blocked':
@@ -344,6 +346,7 @@ const Login: React.FC = () => {
 };
 
 export default Login;
+
 
 
 

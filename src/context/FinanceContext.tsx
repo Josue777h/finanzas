@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useReducer, useEffect, ReactNode } from 'react';
+﻿import React, { createContext, useContext, useReducer, useEffect, ReactNode, useMemo } from 'react';
 import { Account, Transaction, Category, FinanceState } from '../types';
 import { useAuth } from './AuthContext';
 import { 
@@ -29,6 +29,28 @@ interface FinanceContextType extends FinanceState {
 
 const FinanceContext = createContext<FinanceContextType | undefined>(undefined);
 
+type CachedFinanceData = {
+  accounts: Account[];
+  transactions: Transaction[];
+  categories: Category[];
+};
+
+const memoryFinanceCache = new Map<string, CachedFinanceData>();
+const EMPTY_CACHE: CachedFinanceData = {
+  accounts: [],
+  transactions: [],
+  categories: [],
+};
+
+const mergeMemoryCache = (userId: string, patch: Partial<CachedFinanceData>) => {
+  const current = memoryFinanceCache.get(userId) || EMPTY_CACHE;
+  memoryFinanceCache.set(userId, {
+    accounts: patch.accounts ?? current.accounts,
+    transactions: patch.transactions ?? current.transactions,
+    categories: patch.categories ?? current.categories,
+  });
+};
+
 type FinanceAction =
   | { type: 'SET_LOADING_DATA'; payload: boolean }
   | { type: 'SET_ACCOUNTS'; payload: Account[] }
@@ -48,11 +70,11 @@ const initialState: FinanceState = {
   accounts: [],
   transactions: [],
   categories: [
-    { id: '1', name: 'Salario', color: '#10b981', icon: '💰', type: 'income' },
-    { id: '2', name: 'Comida', color: '#ef4444', icon: '🍔', type: 'expense' },
-    { id: '3', name: 'Transporte', color: '#f59e0b', icon: '🚗', type: 'expense' },
-    { id: '4', name: 'Entretenimiento', color: '#8b5cf6', icon: '🎮', type: 'expense' },
-    { id: '5', name: 'Facturas', color: '#3b82f6', icon: '📄', type: 'expense' },
+    { id: '1', name: 'Salario', color: '#10b981', icon: 'ðŸ’°', type: 'income' },
+    { id: '2', name: 'Comida', color: '#ef4444', icon: 'ðŸ”', type: 'expense' },
+    { id: '3', name: 'Transporte', color: '#f59e0b', icon: 'ðŸš—', type: 'expense' },
+    { id: '4', name: 'Entretenimiento', color: '#8b5cf6', icon: 'ðŸŽ®', type: 'expense' },
+    { id: '5', name: 'Facturas', color: '#3b82f6', icon: 'ðŸ“„', type: 'expense' },
   ],
   totalBalance: 0,
   monthlyIncome: 0,
@@ -126,17 +148,21 @@ export const FinanceProvider: React.FC<{ children: ReactNode }> = ({ children })
     if (user?.id && isAuthenticated) {
       console.log('Suscribiendo datos en tiempo real para usuario:', user.id);
 
-      // Mostrar caché local inmediatamente
-      const cachedAccounts = JSON.parse(localStorage.getItem(`accounts_${user.id}`) || '[]');
-      const cachedTransactions = JSON.parse(localStorage.getItem(`transactions_${user.id}`) || '[]');
-      const cachedCategories = JSON.parse(localStorage.getItem(`categories_${user.id}`) || '[]');
-
-      if (cachedAccounts.length > 0 || cachedTransactions.length > 0) {
-        dispatch({ type: 'SET_ACCOUNTS', payload: cachedAccounts as Account[] });
-        dispatch({ type: 'SET_TRANSACTIONS', payload: cachedTransactions as Transaction[] });
-        dispatch({ type: 'SET_CATEGORIES', payload: cachedCategories.length > 0 ? cachedCategories as Category[] : initialState.categories });
-      }
-
+      const hydrateCachedData = () => {
+        const memoized = memoryFinanceCache.get(user.id);
+        if (memoized) {
+          if (memoized.accounts.length > 0 || memoized.transactions.length > 0 || memoized.categories.length > 0) {
+            dispatch({ type: 'SET_ACCOUNTS', payload: memoized.accounts });
+            dispatch({ type: 'SET_TRANSACTIONS', payload: memoized.transactions });
+            dispatch({
+              type: 'SET_CATEGORIES',
+              payload: memoized.categories.length > 0 ? memoized.categories : initialState.categories
+            });
+          }
+          return;
+        }
+      };
+      const cacheHydrationTimer = window.setTimeout(hydrateCachedData, 0);
       let hasLoadedAccounts = false;
       let hasLoadedTransactions = false;
       let hasLoadedCategories = false;
@@ -152,7 +178,7 @@ export const FinanceProvider: React.FC<{ children: ReactNode }> = ({ children })
         (accounts) => {
           hasLoadedAccounts = true;
           dispatch({ type: 'SET_ACCOUNTS', payload: accounts });
-          localStorage.setItem(`accounts_${user.id}`, JSON.stringify(accounts));
+          mergeMemoryCache(user.id, { accounts });
           maybeStopLoading();
         },
         () => {
@@ -166,7 +192,7 @@ export const FinanceProvider: React.FC<{ children: ReactNode }> = ({ children })
         (transactions) => {
           hasLoadedTransactions = true;
           dispatch({ type: 'SET_TRANSACTIONS', payload: transactions });
-          localStorage.setItem(`transactions_${user.id}`, JSON.stringify(transactions));
+          mergeMemoryCache(user.id, { transactions });
           maybeStopLoading();
         },
         () => {
@@ -181,7 +207,7 @@ export const FinanceProvider: React.FC<{ children: ReactNode }> = ({ children })
           hasLoadedCategories = true;
           const finalCategories = categories.length > 0 ? categories : initialState.categories;
           dispatch({ type: 'SET_CATEGORIES', payload: finalCategories });
-          localStorage.setItem(`categories_${user.id}`, JSON.stringify(finalCategories));
+          mergeMemoryCache(user.id, { categories: finalCategories });
           maybeStopLoading();
         },
         () => {
@@ -194,6 +220,7 @@ export const FinanceProvider: React.FC<{ children: ReactNode }> = ({ children })
       dispatch({ type: 'SET_LOADING_DATA', payload: false });
 
       return () => {
+        window.clearTimeout(cacheHydrationTimer);
         unsubscribeAccounts();
         unsubscribeTransactions();
         unsubscribeCategories();
@@ -209,21 +236,8 @@ export const FinanceProvider: React.FC<{ children: ReactNode }> = ({ children })
     }
   }, [user?.id, isAuthenticated]);
 
-  // Guardar categorías cuando cambian (las cuentas y transacciones se guardan individualmente)
-  useEffect(() => {
-    const saveCategoriesData = async () => {
-      if (user?.id && isAuthenticated && state.categories.length > 0) {
-        try {
-          await saveCategories(user.id, state.categories);
-          console.log('Categorías guardadas en Firebase');
-        } catch (error) {
-          console.error('Error guardando categorías:', error);
-        }
-      }
-    };
-    
-    saveCategoriesData();
-  }, [state.categories, user?.id, isAuthenticated]);
+  // Evitar efecto global de guardado de categorÃ­as para no crear bucles
+  // con suscripciones onSnapshot. El guardado ocurre en add/update/deleteCategory.
 
   const addAccount = (account: Omit<Account, 'id' | 'createdAt'>) => {
     if (!user?.id) {
@@ -238,13 +252,13 @@ export const FinanceProvider: React.FC<{ children: ReactNode }> = ({ children })
       createdAt: new Date(),
     };
     
-    // Agregar al estado inmediatamente para respuesta rápida
+    // Agregar al estado inmediatamente para respuesta rÃ¡pida
     dispatch({ type: 'ADD_ACCOUNT', payload: newAccount });
     trackEvent('account_created', { userId: user.id, accountType: account.type });
     
-    // Actualizar caché local inmediatamente
+    // Actualizar cachÃ© local inmediatamente
     const updatedAccounts = [...state.accounts, newAccount];
-    localStorage.setItem(`accounts_${user.id}`, JSON.stringify(updatedAccounts));
+    mergeMemoryCache(user.id, { accounts: updatedAccounts });
     
     // Guardar en Firebase en segundo plano
     saveAccount(newAccount).then((result) => {
@@ -256,11 +270,11 @@ export const FinanceProvider: React.FC<{ children: ReactNode }> = ({ children })
           payload: { id: newAccount.id, account: { id: result.id } } 
         });
         
-        // Actualizar caché con el ID real
-        const finalAccounts = state.accounts.map(acc => 
+        // Actualizar cachÃ© con el ID real
+        const finalAccounts = updatedAccounts.map(acc => 
           acc.id === newAccount.id ? finalAccount : acc
         );
-        localStorage.setItem(`accounts_${user.id}`, JSON.stringify(finalAccounts));
+        mergeMemoryCache(user.id, { accounts: finalAccounts });
         
         console.log('Cuenta guardada en Firebase:', result.id);
       }
@@ -274,12 +288,12 @@ export const FinanceProvider: React.FC<{ children: ReactNode }> = ({ children })
     dispatch({ type: 'UPDATE_ACCOUNT', payload: { id, account } });
     trackEvent('account_updated', { accountId: id });
     
-    // Actualizar caché local inmediatamente
+    // Actualizar cachÃ© local inmediatamente
     const updatedAccounts = state.accounts.map(acc => 
       acc.id === id ? { ...acc, ...account } : acc
     );
     if (user?.id) {
-      localStorage.setItem(`accounts_${user.id}`, JSON.stringify(updatedAccounts));
+      mergeMemoryCache(user.id, { accounts: updatedAccounts });
     }
     
     // Guardar en Firebase en segundo plano
@@ -325,17 +339,16 @@ export const FinanceProvider: React.FC<{ children: ReactNode }> = ({ children })
       });
     }
 
-    // Actualizar caché local
+    // Actualizar cachÃ© local
     if (user?.id) {
       const updatedAccounts = state.accounts.filter(acc => acc.id !== id);
-      localStorage.setItem(`accounts_${user.id}`, JSON.stringify(updatedAccounts));
-      localStorage.setItem(`transactions_${user.id}`, JSON.stringify(remainingTransactions));
+      mergeMemoryCache(user.id, { accounts: updatedAccounts, transactions: remainingTransactions });
     }
   };
 
   const addTransaction = (transaction: Omit<Transaction, 'id' | 'date'>) => {
     if (!user?.id) {
-      console.error('No se puede agregar transacción: usuario no autenticado');
+      console.error('No se puede agregar transacciÃ³n: usuario no autenticado');
       return;
     }
     
@@ -359,11 +372,11 @@ export const FinanceProvider: React.FC<{ children: ReactNode }> = ({ children })
         payload: { id: transaction.accountId, account: { balance: updatedBalance } }
       });
       
-      // Actualizar caché local inmediatamente
+      // Actualizar cachÃ© local inmediatamente
       const updatedAccounts = state.accounts.map(acc => 
         acc.id === transaction.accountId ? { ...acc, balance: updatedBalance } : acc
       );
-      localStorage.setItem(`accounts_${user.id}`, JSON.stringify(updatedAccounts));
+      mergeMemoryCache(user.id, { accounts: updatedAccounts });
       
       // Guardar cuenta actualizada en Firebase
       const updatedAccount = { ...account, balance: updatedBalance };
@@ -376,9 +389,9 @@ export const FinanceProvider: React.FC<{ children: ReactNode }> = ({ children })
     dispatch({ type: 'ADD_TRANSACTION', payload: newTransaction });
     trackEvent('transaction_created', { userId: user.id, type: transaction.type, category: transaction.category });
     
-    // Actualizar caché local inmediatamente
+    // Actualizar cachÃ© local inmediatamente
     const updatedTransactions = [...state.transactions, newTransaction];
-    localStorage.setItem(`transactions_${user.id}`, JSON.stringify(updatedTransactions));
+    mergeMemoryCache(user.id, { transactions: updatedTransactions });
     
     // Guardar en Firebase en segundo plano
     saveTransaction(newTransaction).then((result) => {
@@ -390,16 +403,16 @@ export const FinanceProvider: React.FC<{ children: ReactNode }> = ({ children })
           payload: { id: newTransaction.id, transaction: { id: result.id } } 
         });
         
-        // Actualizar caché con el ID real
-        const finalTransactions = state.transactions.map(trx => 
+        // Actualizar cachÃ© con el ID real
+        const finalTransactions = updatedTransactions.map(trx => 
           trx.id === newTransaction.id ? finalTransaction : trx
         );
-        localStorage.setItem(`transactions_${user.id}`, JSON.stringify(finalTransactions));
+        mergeMemoryCache(user.id, { transactions: finalTransactions });
         
-        console.log('Transacción guardada en Firebase:', result.id);
+        console.log('TransacciÃ³n guardada en Firebase:', result.id);
       }
     }).catch((error) => {
-      console.error('Error guardando transacción en Firebase:', error);
+      console.error('Error guardando transacciÃ³n en Firebase:', error);
     });
   };
 
@@ -408,12 +421,12 @@ export const FinanceProvider: React.FC<{ children: ReactNode }> = ({ children })
     dispatch({ type: 'UPDATE_TRANSACTION', payload: { id, transaction } });
     trackEvent('transaction_updated', { transactionId: id });
     
-    // Actualizar caché local inmediatamente
+    // Actualizar cachÃ© local inmediatamente
     const updatedTransactions = state.transactions.map(trx => 
       trx.id === id ? { ...trx, ...transaction } : trx
     );
     if (user?.id) {
-      localStorage.setItem(`transactions_${user.id}`, JSON.stringify(updatedTransactions));
+      mergeMemoryCache(user.id, { transactions: updatedTransactions });
     }
     
     // Guardar en Firebase en segundo plano
@@ -422,9 +435,9 @@ export const FinanceProvider: React.FC<{ children: ReactNode }> = ({ children })
       if (transactionToUpdate) {
         const updatedTransaction = { ...transactionToUpdate, ...transaction };
         saveTransaction(updatedTransaction).then(() => {
-          console.log('Transacción actualizada en Firebase');
+          console.log('TransacciÃ³n actualizada en Firebase');
         }).catch((error) => {
-          console.error('Error actualizando transacción en Firebase:', error);
+          console.error('Error actualizando transacciÃ³n en Firebase:', error);
         });
       }
     }
@@ -446,12 +459,12 @@ export const FinanceProvider: React.FC<{ children: ReactNode }> = ({ children })
           payload: { id: transaction.accountId, account: { balance: restoredBalance } }
         });
         
-        // Actualizar caché local inmediatamente
+        // Actualizar cachÃ© local inmediatamente
         const updatedAccounts = state.accounts.map(acc => 
           acc.id === transaction.accountId ? { ...acc, balance: restoredBalance } : acc
         );
         if (user?.id) {
-          localStorage.setItem(`accounts_${user.id}`, JSON.stringify(updatedAccounts));
+          mergeMemoryCache(user.id, { accounts: updatedAccounts });
         }
         
         // Guardar cuenta actualizada en Firebase
@@ -466,18 +479,18 @@ export const FinanceProvider: React.FC<{ children: ReactNode }> = ({ children })
     dispatch({ type: 'DELETE_TRANSACTION', payload: id });
     trackEvent('transaction_deleted', { transactionId: id, type: transaction?.type });
     
-    // Actualizar caché local inmediatamente
+    // Actualizar cachÃ© local inmediatamente
     const updatedTransactions = state.transactions.filter(trx => trx.id !== id);
     if (user?.id) {
-      localStorage.setItem(`transactions_${user.id}`, JSON.stringify(updatedTransactions));
+      mergeMemoryCache(user.id, { transactions: updatedTransactions });
     }
     
     // Eliminar de Firebase en segundo plano
     if (id.startsWith('firebase_') && user?.id) {
       deleteTransactionFirebase(id, user.id).then(() => {
-        console.log('Transacción eliminada de Firebase');
+        console.log('TransacciÃ³n eliminada de Firebase');
       }).catch((error) => {
-        console.error('Error eliminando transacción de Firebase:', error);
+        console.error('Error eliminando transacciÃ³n de Firebase:', error);
       });
     }
   };
@@ -491,16 +504,16 @@ export const FinanceProvider: React.FC<{ children: ReactNode }> = ({ children })
     // Agregar al estado inmediatamente
     dispatch({ type: 'ADD_CATEGORY', payload: newCategory });
     
-    // Actualizar caché local inmediatamente
+    // Actualizar cachÃ© local inmediatamente
     const updatedCategories = [...state.categories, newCategory];
     if (user?.id) {
-      localStorage.setItem(`categories_${user.id}`, JSON.stringify(updatedCategories));
+      mergeMemoryCache(user.id, { categories: updatedCategories });
       
       // Guardar en Firebase en segundo plano
       saveCategories(user.id, updatedCategories).then(() => {
-        console.log('Categorías guardadas en Firebase');
+        console.log('CategorÃ­as guardadas en Firebase');
       }).catch((error) => {
-        console.error('Error guardando categorías en Firebase:', error);
+        console.error('Error guardando categorÃ­as en Firebase:', error);
       });
     }
   };
@@ -509,18 +522,18 @@ export const FinanceProvider: React.FC<{ children: ReactNode }> = ({ children })
     // Actualizar en el estado inmediatamente
     dispatch({ type: 'UPDATE_CATEGORY', payload: { id, category } });
     
-    // Actualizar caché local inmediatamente
+    // Actualizar cachÃ© local inmediatamente
     const updatedCategories = state.categories.map(cat => 
       cat.id === id ? { ...cat, ...category } : cat
     );
     if (user?.id) {
-      localStorage.setItem(`categories_${user.id}`, JSON.stringify(updatedCategories));
+      mergeMemoryCache(user.id, { categories: updatedCategories });
       
       // Guardar en Firebase en segundo plano
       saveCategories(user.id, updatedCategories).then(() => {
-        console.log('Categorías actualizadas en Firebase');
+        console.log('CategorÃ­as actualizadas en Firebase');
       }).catch((error) => {
-        console.error('Error actualizando categorías en Firebase:', error);
+        console.error('Error actualizando categorÃ­as en Firebase:', error);
       });
     }
   };
@@ -529,36 +542,50 @@ export const FinanceProvider: React.FC<{ children: ReactNode }> = ({ children })
     // Eliminar del estado inmediatamente
     dispatch({ type: 'DELETE_CATEGORY', payload: id });
     
-    // Actualizar caché local inmediatamente
+    // Actualizar cachÃ© local inmediatamente
     const updatedCategories = state.categories.filter(cat => cat.id !== id);
     if (user?.id) {
-      localStorage.setItem(`categories_${user.id}`, JSON.stringify(updatedCategories));
+      mergeMemoryCache(user.id, { categories: updatedCategories });
       
       // Guardar en Firebase en segundo plano
       saveCategories(user.id, updatedCategories).then(() => {
-        console.log('Categoría eliminada de Firebase');
+        console.log('CategorÃ­a eliminada de Firebase');
       }).catch((error) => {
-        console.error('Error eliminando categoría de Firebase:', error);
+        console.error('Error eliminando categorÃ­a de Firebase:', error);
       });
     }
   };
 
-  const totalBalance = state.accounts.reduce((sum, acc) => sum + acc.balance, 0);
-  const currentMonth = new Date().getMonth();
-  const currentYear = new Date().getFullYear();
-  
-  const monthlyTransactions = state.transactions.filter(trx => {
-    const trxDate = new Date(trx.date);
-    return trxDate.getMonth() === currentMonth && trxDate.getFullYear() === currentYear;
-  });
+  const { totalBalance, monthlyIncome, monthlyExpenses } = useMemo(() => {
+    let nextTotalBalance = 0;
+    for (const account of state.accounts) {
+      nextTotalBalance += account.balance;
+    }
 
-  const monthlyIncome = monthlyTransactions
-    .filter(trx => trx.type === 'income')
-    .reduce((sum, trx) => sum + trx.amount, 0);
+    const now = new Date();
+    const currentMonth = now.getMonth();
+    const currentYear = now.getFullYear();
+    let nextMonthlyIncome = 0;
+    let nextMonthlyExpenses = 0;
 
-  const monthlyExpenses = monthlyTransactions
-    .filter(trx => trx.type === 'expense')
-    .reduce((sum, trx) => sum + trx.amount, 0);
+    for (const trx of state.transactions) {
+      const trxDate = new Date(trx.date);
+      if (trxDate.getMonth() !== currentMonth || trxDate.getFullYear() !== currentYear) {
+        continue;
+      }
+      if (trx.type === 'income') {
+        nextMonthlyIncome += trx.amount;
+      } else {
+        nextMonthlyExpenses += trx.amount;
+      }
+    }
+
+    return {
+      totalBalance: nextTotalBalance,
+      monthlyIncome: nextMonthlyIncome,
+      monthlyExpenses: nextMonthlyExpenses,
+    };
+  }, [state.accounts, state.transactions]);
 
   return (
     <FinanceContext.Provider
@@ -591,3 +618,5 @@ export const useFinance = () => {
   }
   return context;
 };
+
+

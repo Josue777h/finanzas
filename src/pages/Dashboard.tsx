@@ -27,10 +27,25 @@ const Dashboard: React.FC = () => {
   }
 
   const recentTransactions = useMemo(() => {
-    return transactions
-      .slice()
-      .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
-      .slice(0, 5);
+    const top: typeof transactions = [];
+    for (const trx of transactions) {
+      const trxTime = new Date(trx.date).getTime();
+      let inserted = false;
+      for (let i = 0; i < top.length; i++) {
+        if (trxTime > new Date(top[i].date).getTime()) {
+          top.splice(i, 0, trx);
+          inserted = true;
+          break;
+        }
+      }
+      if (!inserted && top.length < 5) {
+        top.push(trx);
+      }
+      if (top.length > 5) {
+        top.length = 5;
+      }
+    }
+    return top;
   }, [transactions]);
 
   const last7Days = useMemo(() => {
@@ -42,34 +57,39 @@ const Dashboard: React.FC = () => {
   }, []);
 
   const chartData = useMemo(() => {
-    return last7Days.map((day, index) => {
-      const dayTransactions = transactions.filter(trx => {
-        const trxDate = new Date(trx.date);
-        const currentDate = new Date();
-        currentDate.setDate(currentDate.getDate() - (6 - index));
-        return trxDate.toDateString() === currentDate.toDateString();
-      });
+    const dayIndexByKey = new Map<string, number>();
+    const base = new Date();
+    for (let i = 0; i < 7; i++) {
+      const d = new Date(base);
+      d.setDate(base.getDate() - (6 - i));
+      dayIndexByKey.set(d.toDateString(), i);
+    }
 
-      return {
-        day,
-        income: dayTransactions.filter(trx => trx.type === 'income').reduce((sum, trx) => sum + trx.amount, 0),
-        expenses: dayTransactions.filter(trx => trx.type === 'expense').reduce((sum, trx) => sum + trx.amount, 0),
-      };
-    });
+    const totals = Array.from({ length: 7 }, () => ({ income: 0, expenses: 0 }));
+    for (const trx of transactions) {
+      const idx = dayIndexByKey.get(new Date(trx.date).toDateString());
+      if (idx === undefined) continue;
+      if (trx.type === 'income') {
+        totals[idx].income += trx.amount;
+      } else {
+        totals[idx].expenses += trx.amount;
+      }
+    }
+
+    return last7Days.map((day, index) => ({
+      day,
+      income: totals[index].income,
+      expenses: totals[index].expenses,
+    }));
   }, [last7Days, transactions]);
 
   const categoryData = useMemo(() => {
-    return transactions
-      .filter(trx => trx.type === 'expense')
-      .reduce((acc, trx) => {
-        const existing = acc.find(item => item.name === trx.category);
-        if (existing) {
-          existing.value += trx.amount;
-        } else {
-          acc.push({ name: trx.category, value: trx.amount });
-        }
-        return acc;
-      }, [] as { name: string; value: number }[]);
+    const categoryTotals = new Map<string, number>();
+    for (const trx of transactions) {
+      if (trx.type !== 'expense') continue;
+      categoryTotals.set(trx.category, (categoryTotals.get(trx.category) || 0) + trx.amount);
+    }
+    return Array.from(categoryTotals.entries()).map(([name, value]) => ({ name, value }));
   }, [transactions]);
 
   const COLORS = ['#3b82f6', '#ef4444', '#f59e0b', '#10b981', '#8b5cf6', '#ec4899'];

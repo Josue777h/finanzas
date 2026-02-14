@@ -1,4 +1,4 @@
-import { initializeApp } from 'firebase/app';
+﻿import { initializeApp } from 'firebase/app';
 import { 
   getAuth, 
   createUserWithEmailAndPassword, 
@@ -28,7 +28,7 @@ import {
 import { enableIndexedDbPersistence } from 'firebase/firestore';
 import { getFunctions } from 'firebase/functions';
 
-// Tu configuración de Firebase - Reemplaza con tus credenciales
+// Tu configuraciÃ³n de Firebase - Reemplaza con tus credenciales
 const firebaseConfig = {
   apiKey: process.env.REACT_APP_FIREBASE_API_KEY || "AIzaSyA_MCovnY-NWCdfc23yLI8kr20HLrqqeEo",
   authDomain: process.env.REACT_APP_FIREBASE_AUTH_DOMAIN || "listadetareas-cb9a7.firebaseapp.com",
@@ -43,19 +43,41 @@ const auth = getAuth(app);
 const db = getFirestore(app);
 const functions = getFunctions(app);
 
-// Persistencia local para carga más rápida
+// Persistencia local para carga mÃ¡s rÃ¡pida
 enableIndexedDbPersistence(db).catch((err) => {
-  // Si hay múltiples pestañas abiertas o el navegador no soporta, seguimos sin bloquear
+  // Si hay mÃºltiples pestaÃ±as abiertas o el navegador no soporta, seguimos sin bloquear
   console.warn('Persistencia Firestore no disponible:', err.code);
 });
 
 // Exportar servicios
 export { app, auth, db, functions };
 
-// Funciones de autenticación
+const withTimeout = async <T,>(
+  promise: Promise<T>,
+  timeoutMs: number,
+  timeoutError: { code: string; message: string }
+): Promise<T> => {
+  let timeoutId: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([
+      promise,
+      new Promise<T>((_, reject) => {
+        timeoutId = setTimeout(() => reject(timeoutError), timeoutMs);
+      }),
+    ]);
+  } finally {
+    if (timeoutId) clearTimeout(timeoutId);
+  }
+};
+
+// Funciones de autenticaciÃ³n
 export const signIn = async (email: string, password: string) => {
   try {
-    const userCredential = await signInWithEmailAndPassword(auth, email, password);
+    const userCredential: any = await withTimeout(
+      signInWithEmailAndPassword(auth, email, password),
+      12000,
+      { code: 'auth/timeout', message: 'Timeout en inicio de sesiÃ³n' }
+    );
     return { success: true, user: userCredential.user };
   } catch (error: any) {
     return { success: false, error: error.message, errorCode: error.code };
@@ -70,7 +92,7 @@ export const signUp = async (email: string, password: string, name: string) => {
     const userCredential = await createUserWithEmailAndPassword(auth, email, password);
     console.log('Usuario creado en Auth:', userCredential.user.uid);
     
-    // 2. Guardar información adicional en Firestore
+    // 2. Guardar informaciÃ³n adicional en Firestore
     const userData = {
       uid: userCredential.user.uid,
       email,
@@ -85,7 +107,7 @@ export const signUp = async (email: string, password: string, name: string) => {
     return { success: true, user: userCredential.user };
   } catch (error: any) {
     console.error('Error detallado en registro:', error);
-    console.error('Código de error:', error.code);
+    console.error('CÃ³digo de error:', error.code);
     console.error('Mensaje de error:', error.message);
     return { success: false, error: error.message, errorCode: error.code };
   }
@@ -100,7 +122,7 @@ export const signInWithGoogle = async () => {
     const additionalUserInfo = getAdditionalUserInfo(userCredential);
     const user = userCredential.user;
 
-    // Si Firebase lo marca como usuario nuevo, no estÃ¡ registrado en la app.
+    // Si Firebase lo marca como usuario nuevo, no estÃƒÂ¡ registrado en la app.
     if (additionalUserInfo?.isNewUser) {
       void deleteUser(user).catch(() => undefined);
       await firebaseSignOut(auth);
@@ -167,8 +189,8 @@ export const signUpWithGoogle = async () => {
       );
       localStorage.removeItem('spendo_pending_profile_uid');
     } catch (profileError: any) {
-      // Si Firestore está temporalmente no disponible, permitimos continuar
-      // y sincronizamos el perfil cuando vuelva la conexión.
+      // Si Firestore estÃ¡ temporalmente no disponible, permitimos continuar
+      // y sincronizamos el perfil cuando vuelva la conexiÃ³n.
       if (profileError?.code === 'unavailable' || profileError?.code === 'deadline-exceeded') {
         localStorage.setItem('spendo_pending_profile_uid', user.uid);
       } else {
@@ -234,7 +256,7 @@ export const updateUserData = async (uid: string, data: any) => {
 // Funciones para cuentas
 export const saveAccount = async (account: any) => {
   try {
-    console.log('💾 Guardando cuenta en Firebase...');
+    console.log('ðŸ’¾ Guardando cuenta en Firebase...');
     const startTime = Date.now();
     
     // Remover el id del objeto antes de guardar (Firestore lo maneja)
@@ -251,40 +273,37 @@ export const saveAccount = async (account: any) => {
       const docRef = doc(db, 'accounts', firebaseId);
       await updateDoc(docRef, accountData);
       result = { success: true, id: id };
-      console.log('✅ Cuenta actualizada en Firebase');
+      console.log('âœ… Cuenta actualizada en Firebase');
     } else {
       // Crear nueva cuenta
       const docRef = await addDoc(collection(db, 'accounts'), accountData);
       result = { success: true, id: `firebase_${docRef.id}` };
-      console.log('✅ Nueva cuenta creada en Firebase');
+      console.log('âœ… Nueva cuenta creada en Firebase');
     }
     
     const endTime = Date.now();
-    console.log(`⚡ Cuenta guardada en ${endTime - startTime}ms`);
+    console.log(`âš¡ Cuenta guardada en ${endTime - startTime}ms`);
     
-    // No limpiar caché aquí, se maneja en el contexto
+    // No limpiar cachÃ© aquÃ­, se maneja en el contexto
     return result;
   } catch (error: any) {
-    console.error('❌ Error guardando cuenta:', error);
+    console.error('âŒ Error guardando cuenta:', error);
     return { success: false, error: error.message };
   }
 };
 
 export const loadAccounts = async (userId: string) => {
   try {
-    console.log('🔥 Cargando cuentas desde Firebase para:', userId);
+    console.log('ðŸ”¥ Cargando cuentas desde Firebase para:', userId);
     const startTime = Date.now();
     
-    // Agregar timeout individual
-    const timeoutPromise = new Promise((_, reject) => 
-      setTimeout(() => reject(new Error('Timeout en carga de cuentas')), 10000) // 10 segundos
-    );
-    
-    // Cargar directamente desde Firebase (el caché se maneja en el contexto)
+    // Cargar directamente desde Firebase (el cachÃ© se maneja en el contexto)
     const q = query(collection(db, 'accounts'), where('userId', '==', userId));
-    const queryPromise = getDocs(q);
-    
-    const querySnapshot: any = await Promise.race([queryPromise, timeoutPromise]);
+    const querySnapshot: any = await withTimeout(
+      getDocs(q),
+      10000,
+      { code: 'firestore/timeout', message: 'Timeout en carga de cuentas' }
+    );
     
     const accounts = querySnapshot.docs.map((doc: any) => {
       const data = doc.data();
@@ -296,11 +315,11 @@ export const loadAccounts = async (userId: string) => {
     });
     
     const endTime = Date.now();
-    console.log(`✅ Cuentas cargadas en ${endTime - startTime}ms:`, accounts.length);
+    console.log(`âœ… Cuentas cargadas en ${endTime - startTime}ms:`, accounts.length);
     
     return { success: true, data: accounts };
   } catch (error: any) {
-    console.error('❌ Error cargando cuentas:', error.message);
+    console.error('âŒ Error cargando cuentas:', error.message);
     return { success: false, error: error.message, data: [] };
   }
 };
@@ -311,7 +330,7 @@ export const deleteAccountFirebase = async (accountId: string, userId: string) =
     const docRef = doc(db, 'accounts', firebaseId);
     await deleteDoc(docRef);
     
-    // Limpiar caché para forzar recarga
+    // Limpiar cachÃ© para forzar recarga
     clearCache(userId);
     
     return { success: true };
@@ -356,7 +375,7 @@ export const savePushToken = async (userId: string, token: string) => {
 // Funciones para transacciones
 export const saveTransaction = async (transaction: any) => {
   try {
-    console.log('💾 Guardando transacción en Firebase...');
+    console.log('ðŸ’¾ Guardando transacciÃ³n en Firebase...');
     const startTime = Date.now();
     
     // Remover el id del objeto antes de guardar (Firestore lo maneja)
@@ -368,45 +387,42 @@ export const saveTransaction = async (transaction: any) => {
     
     let result;
     if (id && id.startsWith('firebase_')) {
-      // Actualizar transacción existente
+      // Actualizar transacciÃ³n existente
       const firebaseId = id.replace('firebase_', '');
       const docRef = doc(db, 'transactions', firebaseId);
       await updateDoc(docRef, transactionData);
       result = { success: true, id: id };
-      console.log('✅ Transacción actualizada en Firebase');
+      console.log('âœ… TransacciÃ³n actualizada en Firebase');
     } else {
-      // Crear nueva transacción
+      // Crear nueva transacciÃ³n
       const docRef = await addDoc(collection(db, 'transactions'), transactionData);
       result = { success: true, id: `firebase_${docRef.id}` };
-      console.log('✅ Nueva transacción creada en Firebase');
+      console.log('âœ… Nueva transacciÃ³n creada en Firebase');
     }
     
     const endTime = Date.now();
-    console.log(`⚡ Transacción guardada en ${endTime - startTime}ms`);
+    console.log(`âš¡ TransacciÃ³n guardada en ${endTime - startTime}ms`);
     
-    // No limpiar caché aquí, se maneja en el contexto
+    // No limpiar cachÃ© aquÃ­, se maneja en el contexto
     return result;
   } catch (error: any) {
-    console.error('❌ Error guardando transacción:', error);
+    console.error('âŒ Error guardando transacciÃ³n:', error);
     return { success: false, error: error.message };
   }
 };
 
 export const loadTransactions = async (userId: string) => {
   try {
-    console.log('💰 Cargando transacciones desde Firebase para:', userId);
+    console.log('ðŸ’° Cargando transacciones desde Firebase para:', userId);
     const startTime = Date.now();
     
-    // Agregar timeout individual
-    const timeoutPromise = new Promise((_, reject) => 
-      setTimeout(() => reject(new Error('Timeout en carga de transacciones')), 10000) // 10 segundos
-    );
-    
-    // Cargar directamente desde Firebase (el caché se maneja en el contexto)
+    // Cargar directamente desde Firebase (el cachÃ© se maneja en el contexto)
     const q = query(collection(db, 'transactions'), where('userId', '==', userId));
-    const queryPromise = getDocs(q);
-    
-    const querySnapshot: any = await Promise.race([queryPromise, timeoutPromise]);
+    const querySnapshot: any = await withTimeout(
+      getDocs(q),
+      10000,
+      { code: 'firestore/timeout', message: 'Timeout en carga de transacciones' }
+    );
     
     const transactions = querySnapshot.docs.map((doc: any) => {
       const data = doc.data();
@@ -418,11 +434,11 @@ export const loadTransactions = async (userId: string) => {
     });
     
     const endTime = Date.now();
-    console.log(`✅ Transacciones cargadas en ${endTime - startTime}ms:`, transactions.length);
+    console.log(`âœ… Transacciones cargadas en ${endTime - startTime}ms:`, transactions.length);
     
     return { success: true, data: transactions };
   } catch (error: any) {
-    console.error('❌ Error cargando transacciones:', error.message);
+    console.error('âŒ Error cargando transacciones:', error.message);
     return { success: false, error: error.message, data: [] };
   }
 };
@@ -433,12 +449,12 @@ export const deleteTransactionFirebase = async (transactionId: string, userId: s
     const docRef = doc(db, 'transactions', firebaseId);
     await deleteDoc(docRef);
     
-    // Limpiar caché para forzar recarga
+    // Limpiar cachÃ© para forzar recarga
     clearCache(userId);
     
     return { success: true };
   } catch (error: any) {
-    console.error('Error eliminando transacción:', error);
+    console.error('Error eliminando transacciÃ³n:', error);
     return { success: false, error: error.message };
   }
 };
@@ -462,7 +478,7 @@ export const deleteAllUserData = async (userId: string) => {
       batch.delete(doc(db, 'transactions', docSnap.id));
     });
 
-    // Categorías por usuario
+    // CategorÃ­as por usuario
     batch.delete(doc(db, 'userCategories', userId));
     // Perfil de usuario
     batch.delete(doc(db, 'users', userId));
@@ -477,63 +493,60 @@ export const deleteAllUserData = async (userId: string) => {
   }
 };
 
-// Función para verificar conexión a Firebase
+// FunciÃ³n para verificar conexiÃ³n a Firebase
 export const checkFirebaseConnection = async () => {
   try {
-    console.log('🔍 Verificando conexión a Firebase...');
+    console.log('ðŸ” Verificando conexiÃ³n a Firebase...');
     const testDoc = doc(db, 'connectionTest', 'test');
     await getDoc(testDoc);
-    console.log('✅ Conexión a Firebase establecida');
+    console.log('âœ… ConexiÃ³n a Firebase establecida');
     return true;
   } catch (error) {
-    console.error('❌ Error de conexión a Firebase:', error);
+    console.error('âŒ Error de conexiÃ³n a Firebase:', error);
     return false;
   }
 };
 
-// Función para limpiar caché local
+// FunciÃ³n para limpiar cachÃ© local
 export const clearCache = (userId: string) => {
   localStorage.removeItem(`accounts_${userId}`);
   localStorage.removeItem(`transactions_${userId}`);
   localStorage.removeItem(`categories_${userId}`);
-  console.log('Caché local limpiado para usuario:', userId);
+  console.log('CachÃ© local limpiado para usuario:', userId);
 };
 
-// Funciones para categorías
+// Funciones para categorÃ­as
 export const saveCategories = async (userId: string, categories: any[]) => {
   try {
-    console.log('📂 Guardando categorías en Firebase...');
+    console.log('ðŸ“‚ Guardando categorÃ­as en Firebase...');
     const startTime = Date.now();
     
     const userDocRef = doc(db, 'userCategories', userId);
     await setDoc(userDocRef, { categories, updatedAt: Timestamp.now() });
     
     const endTime = Date.now();
-    console.log(`⚡ Categorías guardadas en ${endTime - startTime}ms:`, categories.length);
+    console.log(`âš¡ CategorÃ­as guardadas en ${endTime - startTime}ms:`, categories.length);
     
-    // No limpiar caché aquí, se maneja en el contexto
+    // No limpiar cachÃ© aquÃ­, se maneja en el contexto
     return { success: true };
   } catch (error: any) {
-    console.error('❌ Error guardando categorías:', error);
+    console.error('âŒ Error guardando categorÃ­as:', error);
     return { success: false, error: error.message };
   }
 };
 
 export const loadCategories = async (userId: string) => {
   try {
-    console.log('📂 Cargando categorías desde Firebase para:', userId);
+    console.log('ðŸ“‚ Cargando categorÃ­as desde Firebase para:', userId);
     const startTime = Date.now();
     
-    // Agregar timeout individual
-    const timeoutPromise = new Promise((_, reject) => 
-      setTimeout(() => reject(new Error('Timeout en carga de categorías')), 10000) // 10 segundos
-    );
-    
-    // Cargar directamente desde Firebase (el caché se maneja en el contexto)
+    // Cargar directamente desde Firebase (el cachÃ© se maneja en el contexto)
     const docRef = doc(db, 'userCategories', userId);
-    const docPromise = getDoc(docRef);
-    
-    const docSnap: any = await Promise.race([docPromise, timeoutPromise]);
+    const docSnap: any = await withTimeout(
+      getDoc(docRef),
+      10000,
+      { code: 'firestore/timeout', message: 'Timeout en carga de categorÃ­as' }
+    );
     
     let categories = [];
     if (docSnap.exists()) {
@@ -541,11 +554,11 @@ export const loadCategories = async (userId: string) => {
     }
     
     const endTime = Date.now();
-    console.log(`✅ Categorías cargadas en ${endTime - startTime}ms:`, categories.length);
+    console.log(`âœ… CategorÃ­as cargadas en ${endTime - startTime}ms:`, categories.length);
     
     return { success: true, data: categories };
   } catch (error: any) {
-    console.error('❌ Error cargando categorías:', error.message);
+    console.error('âŒ Error cargando categorÃ­as:', error.message);
     return { success: false, error: error.message, data: [] };
   }
 };
@@ -571,7 +584,7 @@ export const subscribeAccounts = (
       onData(accounts);
     },
     (error) => {
-      console.error('Error suscripción cuentas:', error);
+      console.error('Error suscripciÃ³n cuentas:', error);
       if (onError) onError(error);
     }
   );
@@ -597,7 +610,7 @@ export const subscribeTransactions = (
       onData(transactions);
     },
     (error) => {
-      console.error('Error suscripción transacciones:', error);
+      console.error('Error suscripciÃ³n transacciones:', error);
       if (onError) onError(error);
     }
   );
@@ -616,8 +629,9 @@ export const subscribeCategories = (
       onData(categories);
     },
     (error) => {
-      console.error('Error suscripción categorías:', error);
+      console.error('Error suscripciÃ³n categorÃ­as:', error);
       if (onError) onError(error);
     }
   );
 };
+
